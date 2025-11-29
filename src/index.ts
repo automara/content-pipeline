@@ -152,29 +152,47 @@ app.listen(port, () => {
     console.warn("⚠️  Warning: AIRTABLE_BASE_ID should start with 'app...'");
   }
   
-  // Quick Langfuse config check
+  // Comprehensive Langfuse config check
   const langfusePublicKey = process.env.LANGFUSE_PUBLIC_KEY;
   const langfuseSecretKey = process.env.LANGFUSE_SECRET_KEY;
   const langfuseHost = process.env.LANGFUSE_HOST;
+  const langfuseBaseUrl = process.env.LANGFUSE_BASE_URL;
+  const langfuseFinalUrl = langfuseHost || langfuseBaseUrl || "https://cloud.langfuse.com";
   
-  if (langfusePublicKey && !langfusePublicKey.startsWith("pk-lf-")) {
-    console.warn("⚠️  Warning: LANGFUSE_PUBLIC_KEY should start with 'pk-lf-...'");
-  }
+  console.log("🔍 Langfuse Configuration Check:");
+  console.log(`   Public Key: ${langfusePublicKey ? `${langfusePublicKey.substring(0, 6)}...${langfusePublicKey.substring(langfusePublicKey.length - 4)}` : "❌ NOT SET"}`);
+  console.log(`   Secret Key: ${langfuseSecretKey ? `${langfuseSecretKey.substring(0, 6)}...${langfuseSecretKey.substring(langfuseSecretKey.length - 4)}` : "❌ NOT SET"}`);
+  console.log(`   Base URL: ${langfuseFinalUrl} (from ${langfuseHost ? "LANGFUSE_HOST" : langfuseBaseUrl ? "LANGFUSE_BASE_URL" : "default"})`);
   
-  if (langfuseSecretKey && !langfuseSecretKey.startsWith("sk-lf-")) {
-    console.warn("⚠️  Warning: LANGFUSE_SECRET_KEY should start with 'sk-lf-...'");
-  }
-  
-  if (!langfuseHost) {
-    console.warn("⚠️  Warning: LANGFUSE_HOST is not set. Defaulting to https://cloud.langfuse.com");
+  if (!langfusePublicKey || !langfuseSecretKey) {
+    console.warn("⚠️  Warning: Langfuse credentials are missing!");
+    if (!langfusePublicKey) {
+      console.warn("   - LANGFUSE_PUBLIC_KEY is not set");
+    }
+    if (!langfuseSecretKey) {
+      console.warn("   - LANGFUSE_SECRET_KEY is not set");
+    }
+    console.warn("   Visit /api/diagnostics/langfuse to test your connection");
   } else {
+    // Validate key formats
+    if (!langfusePublicKey.startsWith("pk-lf-")) {
+      console.warn(`⚠️  Warning: LANGFUSE_PUBLIC_KEY should start with 'pk-lf-...'. Got: ${langfusePublicKey.substring(0, 10)}...`);
+    }
+    
+    if (!langfuseSecretKey.startsWith("sk-lf-")) {
+      console.warn(`⚠️  Warning: LANGFUSE_SECRET_KEY should start with 'sk-lf-...'. Got: ${langfuseSecretKey.substring(0, 10)}...`);
+    }
+    
+    // Validate URL
     try {
-      const url = new URL(langfuseHost);
+      const url = new URL(langfuseFinalUrl);
       if (!["http:", "https:"].includes(url.protocol)) {
-        console.warn(`⚠️  Warning: LANGFUSE_HOST should use http:// or https://. Got: ${langfuseHost}`);
+        console.warn(`⚠️  Warning: Langfuse base URL should use http:// or https://. Got: ${langfuseFinalUrl}`);
+      } else {
+        console.log("✅ Langfuse configuration looks valid");
       }
     } catch {
-      console.warn(`⚠️  Warning: LANGFUSE_HOST is not a valid URL. Got: ${langfuseHost}`);
+      console.warn(`⚠️  Warning: Langfuse base URL is not a valid URL. Got: ${langfuseFinalUrl}`);
     }
   }
 });

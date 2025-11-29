@@ -16,6 +16,26 @@ import { Langfuse } from "langfuse";
 let langfuseInstance: Langfuse | null = null;
 
 /**
+ * Get Langfuse base URL from environment variables
+ * Supports both LANGFUSE_HOST and LANGFUSE_BASE_URL for compatibility
+ */
+function getLangfuseBaseUrl(): string {
+  // Check both environment variable names for compatibility
+  const host = process.env.LANGFUSE_HOST || process.env.LANGFUSE_BASE_URL;
+  const baseUrl = host?.trim() || "https://cloud.langfuse.com";
+  return baseUrl;
+}
+
+/**
+ * Mask sensitive values for logging (shows first 6 chars and last 4 chars)
+ */
+function maskValue(value: string | undefined, minLength: number = 10): string {
+  if (!value) return "(not set)";
+  if (value.length < minLength) return "***";
+  return `${value.substring(0, 6)}...${value.substring(value.length - 4)}`;
+}
+
+/**
  * Get or create the Langfuse client instance
  * This ensures the client is initialized with valid values
  */
@@ -26,24 +46,61 @@ function getLangfuseClient(): Langfuse {
 
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
   const secretKey = process.env.LANGFUSE_SECRET_KEY;
-  const host = process.env.LANGFUSE_HOST || "https://cloud.langfuse.com";
+  const baseUrl = getLangfuseBaseUrl();
+
+  // Log configuration (masked for security)
+  const hasHostEnv = !!process.env.LANGFUSE_HOST;
+  const hasBaseUrlEnv = !!process.env.LANGFUSE_BASE_URL;
+  const envVarName = hasHostEnv ? "LANGFUSE_HOST" : hasBaseUrlEnv ? "LANGFUSE_BASE_URL" : "(using default)";
+  
+  console.log("[Langfuse] Initializing client with configuration:");
+  console.log(`[Langfuse]   Public Key: ${maskValue(publicKey)}`);
+  console.log(`[Langfuse]   Secret Key: ${maskValue(secretKey)}`);
+  console.log(`[Langfuse]   Base URL: ${baseUrl} (from ${envVarName})`);
 
   if (!publicKey || !secretKey) {
+    const missing = [];
+    if (!publicKey) missing.push("LANGFUSE_PUBLIC_KEY");
+    if (!secretKey) missing.push("LANGFUSE_SECRET_KEY");
+    
     throw new Error(
-      "Langfuse credentials are missing. Please set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
+      `Langfuse credentials are missing. Please set the following environment variables: ${missing.join(", ")}. ` +
+      `Visit /api/diagnostics/langfuse to test your connection.`
     );
   }
 
-  // Ensure baseUrl is always a valid string (never undefined or empty)
-  const baseUrl = host.trim() || "https://cloud.langfuse.com";
+  // Validate key formats
+  const errors: string[] = [];
+  if (!publicKey.startsWith("pk-lf-")) {
+    errors.push(`LANGFUSE_PUBLIC_KEY should start with "pk-lf-". Got: ${maskValue(publicKey)}`);
+  }
+  if (!secretKey.startsWith("sk-lf-")) {
+    errors.push(`LANGFUSE_SECRET_KEY should start with "sk-lf-". Got: ${maskValue(secretKey)}`);
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(
+      `Langfuse credential format errors: ${errors.join("; ")}. ` +
+      `Visit /api/diagnostics/langfuse to test your connection.`
+    );
+  }
 
-  langfuseInstance = new Langfuse({
-    publicKey,
-    secretKey,
-    baseUrl,
-  });
-
-  return langfuseInstance;
+  try {
+    langfuseInstance = new Langfuse({
+      publicKey,
+      secretKey,
+      baseUrl,
+    });
+    
+    console.log("[Langfuse] Client initialized successfully");
+    return langfuseInstance;
+  } catch (error: any) {
+    console.error("[Langfuse] Failed to initialize client:", error.message);
+    throw new Error(
+      `Failed to initialize Langfuse client: ${error.message}. ` +
+      `Check your credentials and base URL. Visit /api/diagnostics/langfuse to test your connection.`
+    );
+  }
 }
 
 // Export a getter that ensures the client is properly initialized
@@ -86,6 +143,9 @@ export async function getPrompt(
   try {
     // Get the Langfuse client (ensures it's properly initialized)
     const client = getLangfuseClient();
+    const baseUrl = getLangfuseBaseUrl();
+    
+    console.log(`[Langfuse] Fetching prompt "${name}" from ${baseUrl}`);
     
     // Get prompt from Langfuse with 5 minute cache
     // TypeScript Note: The SDK returns a prompt object with a compile() method
@@ -93,10 +153,20 @@ export async function getPrompt(
       cacheTtlSeconds: 300, // Cache for 5 minutes
     });
 
+    console.log(`[Langfuse] Successfully fetched prompt "${name}"`);
+    
     // Compile replaces {{variables}} with actual values
     return prompt.compile(variables);
   } catch (error: any) {
     const errorMsg = error.message || String(error);
+    const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
+    const secretKey = process.env.LANGFUSE_SECRET_KEY;
+    const baseUrl = getLangfuseBaseUrl();
+    const hasHostEnv = !!process.env.LANGFUSE_HOST;
+    const hasBaseUrlEnv = !!process.env.LANGFUSE_BASE_URL;
+
+    console.error(`[Langfuse] Error fetching prompt "${name}":`, errorMsg);
+    console.error(`[Langfuse] Configuration: baseUrl=${baseUrl}, hasPublicKey=${!!publicKey}, hasSecretKey=${!!secretKey}`);
 
     // Check for authentication/credential errors
     if (
@@ -105,10 +175,18 @@ export async function getPrompt(
       errorMsg.includes("Unauthorized") ||
       errorMsg.includes("401")
     ) {
+      const envVarInfo = hasHostEnv 
+        ? "LANGFUSE_HOST" 
+        : hasBaseUrlEnv 
+        ? "LANGFUSE_BASE_URL" 
+        : "neither (using default)";
+      
       throw new Error(
         `Langfuse authentication failed for prompt "${name}". ` +
-        `Check that your LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are correct. ` +
-        `Also verify LANGFUSE_HOST is set correctly (default: https://cloud.langfuse.com). ` +
+        `Configuration: baseUrl=${baseUrl} (from ${envVarInfo}), ` +
+        `publicKey=${maskValue(publicKey)}, secretKey=${maskValue(secretKey)}. ` +
+        `Check that your LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are correct and match your Langfuse project. ` +
+        `Also verify ${hasHostEnv ? "LANGFUSE_HOST" : "LANGFUSE_BASE_URL"} is set correctly (default: https://cloud.langfuse.com). ` +
         `Visit /api/diagnostics/langfuse to test your connection. ` +
         `Original error: ${errorMsg}`
       );
@@ -123,7 +201,8 @@ export async function getPrompt(
     ) {
       throw new Error(
         `Cannot connect to Langfuse host for prompt "${name}". ` +
-        `Check that LANGFUSE_HOST is correct (default: https://cloud.langfuse.com). ` +
+        `Current baseUrl: ${baseUrl}. ` +
+        `Check that ${hasHostEnv ? "LANGFUSE_HOST" : hasBaseUrlEnv ? "LANGFUSE_BASE_URL" : "LANGFUSE_HOST or LANGFUSE_BASE_URL"} is correct (default: https://cloud.langfuse.com). ` +
         `Visit /api/diagnostics/langfuse to test your connection. ` +
         `Original error: ${errorMsg}`
       );

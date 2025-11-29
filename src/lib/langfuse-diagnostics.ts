@@ -11,6 +11,16 @@
 import { Langfuse } from "langfuse";
 
 /**
+ * Get Langfuse base URL from environment variables
+ * Supports both LANGFUSE_HOST and LANGFUSE_BASE_URL for compatibility
+ */
+function getLangfuseBaseUrl(): string {
+  // Check both environment variable names for compatibility
+  const host = process.env.LANGFUSE_HOST || process.env.LANGFUSE_BASE_URL;
+  return host?.trim() || "https://cloud.langfuse.com";
+}
+
+/**
  * Check if environment variables are set
  */
 export function checkEnvironmentVariables(): {
@@ -20,18 +30,22 @@ export function checkEnvironmentVariables(): {
   publicKeyPrefix: string | null;
   secretKeyPrefix: string | null;
   host: string | null;
+  usingBaseUrl: boolean; // Whether LANGFUSE_BASE_URL is being used
 } {
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
   const secretKey = process.env.LANGFUSE_SECRET_KEY;
-  const host = process.env.LANGFUSE_HOST;
+  const hostEnv = process.env.LANGFUSE_HOST;
+  const baseUrlEnv = process.env.LANGFUSE_BASE_URL;
+  const host = getLangfuseBaseUrl();
 
   return {
     hasPublicKey: !!publicKey,
     hasSecretKey: !!secretKey,
-    hasHost: !!host,
+    hasHost: !!(hostEnv || baseUrlEnv),
     publicKeyPrefix: publicKey ? publicKey.substring(0, 6) : null,
     secretKeyPrefix: secretKey ? secretKey.substring(0, 6) : null,
     host: host || null,
+    usingBaseUrl: !!baseUrlEnv && !hostEnv, // True if using LANGFUSE_BASE_URL instead of LANGFUSE_HOST
   };
 }
 
@@ -47,7 +61,7 @@ export function validateCredentialFormats(): {
   const errors: string[] = [];
   const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
   const secretKey = process.env.LANGFUSE_SECRET_KEY;
-  const host = process.env.LANGFUSE_HOST || "https://cloud.langfuse.com";
+  const host = getLangfuseBaseUrl();
 
   let publicKeyValid = true;
   let secretKeyValid = true;
@@ -102,7 +116,7 @@ export async function testConnection(): Promise<{
   try {
     const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
     const secretKey = process.env.LANGFUSE_SECRET_KEY;
-    const host = process.env.LANGFUSE_HOST;
+    const baseUrl = getLangfuseBaseUrl();
 
     if (!publicKey || !secretKey) {
       return {
@@ -111,11 +125,11 @@ export async function testConnection(): Promise<{
       };
     }
 
-    // Create a test Langfuse client
+    // Create a test Langfuse client with validated baseUrl
     const testClient = new Langfuse({
       publicKey,
       secretKey,
-      baseUrl: host,
+      baseUrl,
     });
 
     // Try to list prompts - this is a simple operation that requires authentication
@@ -216,7 +230,7 @@ export async function testPromptAccess(promptName: string): Promise<{
   try {
     const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
     const secretKey = process.env.LANGFUSE_SECRET_KEY;
-    const host = process.env.LANGFUSE_HOST;
+    const baseUrl = getLangfuseBaseUrl();
 
     if (!publicKey || !secretKey) {
       return {
@@ -228,7 +242,7 @@ export async function testPromptAccess(promptName: string): Promise<{
     const testClient = new Langfuse({
       publicKey,
       secretKey,
-      baseUrl: host,
+      baseUrl,
     });
 
     const prompt = await testClient.getPrompt(promptName, undefined, {
