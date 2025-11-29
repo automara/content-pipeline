@@ -56,9 +56,45 @@ const startSchema = z.object({
  * Start pipeline webhook
  * 
  * This is triggered by Airtable when Status changes to "Ready"
+ * 
+ * TypeScript Note: We validate the incoming data to ensure all required fields
+ * are present before sending to Inngest. This prevents errors downstream.
  */
 router.post("/start", async (req: Request, res: Response) => {
   try {
+    // Log what we received for debugging
+    console.log("Start webhook received:", {
+      hasRecordId: !!req.body.recordId,
+      hasTitle: !!req.body.title,
+      titleType: typeof req.body.title,
+      titleValue: req.body.title,
+      hasContentType: !!req.body.contentType,
+      contentTypeType: typeof req.body.contentType,
+      contentTypeValue: req.body.contentType,
+      fullBody: req.body,
+    });
+
+    // Validate required fields before Zod parsing to provide better error messages
+    if (!req.body.title || typeof req.body.title !== "string" || req.body.title.trim() === "") {
+      return res.status(400).json({
+        error: "Missing required field: title. Please ensure the Title field is filled in the Airtable record and passed to the script.",
+        received: {
+          title: req.body.title,
+          titleType: typeof req.body.title,
+        },
+      });
+    }
+
+    if (!req.body.contentType || typeof req.body.contentType !== "string" || req.body.contentType.trim() === "") {
+      return res.status(400).json({
+        error: 'Missing required field: contentType. Please ensure the Content Type field is filled in the Airtable record and passed to the script.',
+        received: {
+          contentType: req.body.contentType,
+          contentTypeType: typeof req.body.contentType,
+        },
+      });
+    }
+
     // Validate incoming data using Zod schema
     const data = startSchema.parse(req.body);
 
@@ -71,6 +107,21 @@ router.post("/start", async (req: Request, res: Response) => {
     res.json({ success: true, message: "Pipeline started" });
   } catch (error) {
     console.error("Start webhook error:", error);
+    
+    // If it's a Zod validation error, provide more helpful message
+    if (error instanceof z.ZodError) {
+      const missingFields = error.errors
+        .filter((e) => e.code === "invalid_type" && e.received === "undefined")
+        .map((e) => e.path.join("."));
+      
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          error: `Missing required fields: ${missingFields.join(", ")}. Please ensure these fields are filled in the Airtable record and passed to the script.`,
+          details: error.errors,
+        });
+      }
+    }
+    
     res.status(400).json({ error: String(error) });
   }
 });

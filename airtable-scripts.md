@@ -86,6 +86,19 @@ if (!response.ok) {
 
 **Note:** Make sure `WEBHOOK_URL` secret is set to the full URL including `/api/webhook/start`
 
+**Important - Required Fields:**
+The following fields **must be filled** in the Airtable record and passed to the script, or the webhook will fail with a clear error message:
+
+- **Title** - Required. Must be a non-empty string. Use `{Title}` in Airtable automation input configuration.
+- **Content Type** - Required. Must be a non-empty string (e.g., "blog", "industry_page"). Use `{Content Type}` in Airtable automation input configuration.
+
+If either of these fields is missing or empty, the webhook will return a 400 error indicating which field is missing. Make sure to fill these fields in your Airtable record before changing the Status to "Ready".
+
+**Troubleshooting:**
+- If you see "Missing required field: title" error, check that the Title field has a value in Airtable
+- If you see "Missing required field: contentType" error, check that the Content Type field has a value in Airtable
+- Verify that your automation input configuration is using `{Title}` and `{Content Type}` (with curly braces) to pass these values to the script
+
 ---
 
 ## Script 2: Continue After Outline Approval (Status → "Outline Approved")
