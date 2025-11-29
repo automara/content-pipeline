@@ -240,7 +240,8 @@ export async function testPromptAccess(promptName: string): Promise<{
     let compiledPrompt: string;
     try {
       compiledPrompt = prompt.compile(testVars);
-      const hasVariables = compiledPrompt.includes("{{") || Object.keys(prompt.variables || {}).length > 0;
+      // Check if the compiled prompt still has {{ placeholders (variables that weren't replaced)
+      const hasVariables = compiledPrompt.includes("{{");
 
       return {
         success: true,
