@@ -48,6 +48,16 @@ type Events = {
       action: "start" | "continue"; // Union type - must be one of these strings
     };
   };
+  "content/outline.generate": {
+    data: {
+      recordId: string;
+    };
+  };
+  "content/draft.generate": {
+    data: {
+      recordId: string;
+    };
+  };
 };
 
 /**
