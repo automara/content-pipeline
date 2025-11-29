@@ -32,14 +32,80 @@ export async function getPrompt(
   name: string,
   variables: Record<string, string>
 ): Promise<string> {
-  // Get prompt from Langfuse with 5 minute cache
-  // TypeScript Note: The SDK returns a prompt object with a compile() method
-  const prompt = await langfuse.getPrompt(name, undefined, {
-    cacheTtlSeconds: 300, // Cache for 5 minutes
-  });
+  // Check if credentials are set before attempting connection
+  const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
+  const secretKey = process.env.LANGFUSE_SECRET_KEY;
+  
+  if (!publicKey || !secretKey) {
+    throw new Error(
+      `Langfuse credentials are missing. Please set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables. ` +
+      `Visit /api/diagnostics/langfuse to test your connection.`
+    );
+  }
 
-  // Compile replaces {{variables}} with actual values
-  return prompt.compile(variables);
+  try {
+    // Get prompt from Langfuse with 5 minute cache
+    // TypeScript Note: The SDK returns a prompt object with a compile() method
+    const prompt = await langfuse.getPrompt(name, undefined, {
+      cacheTtlSeconds: 300, // Cache for 5 minutes
+    });
+
+    // Compile replaces {{variables}} with actual values
+    return prompt.compile(variables);
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+
+    // Check for authentication/credential errors
+    if (
+      errorMsg.includes("Invalid credentials") ||
+      errorMsg.includes("Confirm that you've configured the correct host") ||
+      errorMsg.includes("Unauthorized") ||
+      errorMsg.includes("401")
+    ) {
+      throw new Error(
+        `Langfuse authentication failed for prompt "${name}". ` +
+        `Check that your LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY are correct. ` +
+        `Also verify LANGFUSE_HOST is set correctly (default: https://cloud.langfuse.com). ` +
+        `Visit /api/diagnostics/langfuse to test your connection. ` +
+        `Original error: ${errorMsg}`
+      );
+    }
+
+    // Check for host/connection errors
+    if (
+      errorMsg.includes("host") ||
+      errorMsg.includes("ECONNREFUSED") ||
+      errorMsg.includes("ENOTFOUND") ||
+      errorMsg.includes("Invalid URL")
+    ) {
+      throw new Error(
+        `Cannot connect to Langfuse host for prompt "${name}". ` +
+        `Check that LANGFUSE_HOST is correct (default: https://cloud.langfuse.com). ` +
+        `Visit /api/diagnostics/langfuse to test your connection. ` +
+        `Original error: ${errorMsg}`
+      );
+    }
+
+    // Check for prompt not found errors
+    if (
+      errorMsg.includes("not found") ||
+      errorMsg.includes("404") ||
+      errorMsg.includes("Could not find")
+    ) {
+      throw new Error(
+        `Prompt "${name}" not found in Langfuse. ` +
+        `Make sure the prompt exists in your Langfuse project. ` +
+        `Visit /api/diagnostics/langfuse?promptName=${encodeURIComponent(name)} to test. ` +
+        `Original error: ${errorMsg}`
+      );
+    }
+
+    // Generic error - include helpful hint
+    throw new Error(
+      `Failed to get prompt "${name}" from Langfuse: ${errorMsg}. ` +
+      `Visit /api/diagnostics/langfuse to troubleshoot your Langfuse configuration.`
+    );
+  }
 }
 
 /**

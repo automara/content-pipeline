@@ -31,14 +31,31 @@ export const artifactsTable = base("Context Artifacts");
  * (an async operation) that will eventually resolve to a ContentRecord
  */
 export async function getRecord(recordId: string): Promise<ContentRecord> {
-  const record = await contentTable.find(recordId);
-  
-  return {
-    id: record.id,
-    // TypeScript Note: "as" is a type assertion - we're telling TypeScript
-    // to treat record.fields as ContentRecord["fields"] type
-    fields: record.fields as ContentRecord["fields"],
-  };
+  try {
+    const record = await contentTable.find(recordId);
+    
+    return {
+      id: record.id,
+      // TypeScript Note: "as" is a type assertion - we're telling TypeScript
+      // to treat record.fields as ContentRecord["fields"] type
+      fields: record.fields as ContentRecord["fields"],
+    };
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    
+    // Provide helpful error messages
+    if (errorMsg.includes("Could not find what you are looking for") || 
+        errorMsg.includes("NOT_FOUND")) {
+      throw new Error(
+        `Airtable record not found: "${recordId}". ` +
+        `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
+        `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access to this base?`
+      );
+    }
+    
+    // Re-throw with more context
+    throw new Error(`Failed to get Airtable record: ${errorMsg}`);
+  }
 }
 
 /**
@@ -51,36 +68,82 @@ export async function updateRecord(
   recordId: string,
   fields: Partial<ContentRecord["fields"]>
 ): Promise<void> {
-  await contentTable.update(recordId, fields);
+  try {
+    await contentTable.update(recordId, fields);
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    
+    // Provide helpful error messages
+    if (errorMsg.includes("Could not find what you are looking for") || 
+        errorMsg.includes("NOT_FOUND")) {
+      throw new Error(
+        `Airtable record not found: "${recordId}". ` +
+        `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
+        `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access? ` +
+        `5) Is the table name "Content Pipeline" spelled exactly correctly (case-sensitive)?`
+      );
+    }
+    
+    // Re-throw with more context
+    throw new Error(`Failed to update Airtable record: ${errorMsg}`);
+  }
 }
 
 /**
  * Get industry details by ID
  */
 export async function getIndustry(industryId: string): Promise<Industry> {
-  const record = await industriesTable.find(industryId);
-  
-  return {
-    name: record.get("Name") as string,
-    description: record.get("Description") as string,
-    painPoints: record.get("Pain Points") as string,
-    terminology: record.get("Terminology") as string,
-  };
+  try {
+    const record = await industriesTable.find(industryId);
+    
+    return {
+      name: record.get("Name") as string,
+      description: record.get("Description") as string,
+      painPoints: record.get("Pain Points") as string,
+      terminology: record.get("Terminology") as string,
+    };
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    
+    if (errorMsg.includes("Could not find what you are looking for") || 
+        errorMsg.includes("NOT_FOUND")) {
+      throw new Error(
+        `Industry record not found: "${industryId}". ` +
+        `Check: 1) Does the industry record exist? 2) Is the table name "Industries" correct?`
+      );
+    }
+    
+    throw new Error(`Failed to get industry: ${errorMsg}`);
+  }
 }
 
 /**
  * Get persona details by ID
  */
 export async function getPersona(personaId: string): Promise<Persona> {
-  const record = await personasTable.find(personaId);
-  
-  return {
-    name: record.get("Name") as string,
-    title: record.get("Title") as string,
-    goals: record.get("Goals") as string,
-    painPoints: record.get("Pain Points") as string,
-    objections: record.get("Objections") as string,
-  };
+  try {
+    const record = await personasTable.find(personaId);
+    
+    return {
+      name: record.get("Name") as string,
+      title: record.get("Title") as string,
+      goals: record.get("Goals") as string,
+      painPoints: record.get("Pain Points") as string,
+      objections: record.get("Objections") as string,
+    };
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    
+    if (errorMsg.includes("Could not find what you are looking for") || 
+        errorMsg.includes("NOT_FOUND")) {
+      throw new Error(
+        `Persona record not found: "${personaId}". ` +
+        `Check: 1) Does the persona record exist? 2) Is the table name "Personas" correct?`
+      );
+    }
+    
+    throw new Error(`Failed to get persona: ${errorMsg}`);
+  }
 }
 
 /**

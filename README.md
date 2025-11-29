@@ -184,10 +184,34 @@ This project is written in TypeScript with extensive comments explaining concept
 
 Look through the code files for detailed explanations!
 
+## Troubleshooting
+
+If you're getting errors, check the troubleshooting guide:
+
+**🔧 See `TROUBLESHOOTING.md` for detailed help**
+
+Common issues:
+- **"Could not find what you are looking for"** → Check Airtable configuration (see troubleshooting guide)
+- **Test your connection:** Visit `/api/diagnostics/airtable` on your deployed server
+- **Environment variables:** Make sure all are set in Railway (not just locally)
+
+### Quick Diagnostic Test
+
+Visit this URL on your deployed server:
+```
+https://your-app.railway.app/api/diagnostics/airtable
+```
+
+Or test with a specific record ID:
+```
+https://your-app.railway.app/api/diagnostics/airtable?recordId=recXXXXXXXXXXXXX
+```
+
 ## Documentation
 
 For complete implementation details, see:
 - `automara-batch-processing-guide.md` - Full guide with all setup steps
+- `TROUBLESHOOTING.md` - Debugging guide for common issues
 
 ## License
 
