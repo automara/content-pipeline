@@ -356,6 +356,157 @@ Print this out and check each item:
 
 ---
 
+## Error: "No function ID found in request"
+
+**Error Message:**
+```
+Error: No function ID found in request
+    at InngestCommHandler.handleAction
+```
+
+**What this means:**
+This error occurs when Inngest tries to execute a function but can't find it in its registry. This typically happens after you've made changes to your Inngest functions (like separating workflows into individual functions) but Inngest hasn't discovered the new function definitions yet.
+
+**Root Cause:**
+When Inngest receives an event (like `content/pipeline.start`), it needs to know which function to execute. If Inngest's function registry is out of sync with your code, it can't find the function and throws this error.
+
+**Solution:**
+
+### Step 1: Verify Function Registration
+
+Check that all functions are properly registered in `src/index.ts`:
+
+```typescript
+app.use(
+  "/api/inngest",
+  serve({
+    client: inngest,
+    functions: [
+      generateOutline,    // Listens to content/pipeline.start
+      generateDraft,      // Listens to content/outline.approved
+      finalizeContent,    // Listens to content/draft.approved
+      batchTrigger,       // Listens to content/batch.trigger
+    ],
+  })
+);
+```
+
+**Verify:**
+- All functions are imported at the top of the file
+- All functions are included in the `functions` array
+- No old/deprecated functions are still registered (like the old `contentPipeline`)
+
+### Step 2: Re-sync with Inngest
+
+After making changes to Inngest functions, you need to re-sync:
+
+1. **Redeploy your application:**
+   - Push your code changes to GitHub
+   - Railway will automatically redeploy
+   - When the server starts, Inngest will automatically discover functions
+
+2. **Verify Inngest can reach your server:**
+   - Check that your Railway app is running: `https://your-app.railway.app/health`
+   - Verify the Inngest endpoint is accessible: `https://your-app.railway.app/api/inngest`
+   - Inngest should automatically call this endpoint to discover functions
+
+3. **Check Inngest Dashboard:**
+   - Go to https://app.inngest.com
+   - Navigate to your app
+   - Go to "Functions" tab
+   - You should see all your functions listed:
+     - `generate-outline-standalone`
+     - `generate-draft-standalone`
+     - `finalize-content`
+     - `batch-trigger`
+   - If functions are missing, Inngest hasn't discovered them yet
+
+### Step 3: Manual Function Discovery (if needed)
+
+If automatic discovery isn't working:
+
+1. **Check Inngest App Settings:**
+   - Go to Inngest Dashboard → Your App → Settings
+   - Verify the "App URL" is set to: `https://your-app.railway.app/api/inngest`
+   - If it's wrong, update it and save
+
+2. **Trigger Manual Sync:**
+   - In Inngest Dashboard → Functions
+   - Look for a "Sync" or "Refresh" button
+   - Click it to force Inngest to re-discover functions
+
+3. **Check Server Logs:**
+   - Look for Inngest discovery requests in Railway logs
+   - You should see requests to `/api/inngest` with method `GET` or `POST`
+   - If you don't see these, Inngest can't reach your server
+
+### Step 4: Verify Function IDs Match
+
+Check that function IDs in your code match what Inngest expects:
+
+- `generate-outline.ts`: ID should be `"generate-outline-standalone"`
+- `generate-draft.ts`: ID should be `"generate-draft-standalone"`
+- `finalize-content.ts`: ID should be `"finalize-content"`
+- `batch-trigger.ts`: ID should be `"batch-trigger"`
+
+**To check function IDs:**
+```typescript
+// In each function file, look for:
+export const functionName = inngest.createFunction(
+  {
+    id: "function-id-here",  // <-- This is what Inngest uses
+    retries: 3,
+  },
+  // ...
+);
+```
+
+### Step 5: Test the Webhook
+
+After re-syncing, test that the webhook works:
+
+1. **Trigger the webhook manually:**
+   ```bash
+   curl -X POST https://your-app.railway.app/api/webhook/start \
+     -H "Content-Type: application/json" \
+     -H "X-Webhook-Secret: your-secret" \
+     -d '{
+       "recordId": "recXXXXXXXXXXXXX",
+       "title": "Test Content",
+       "contentType": "blog",
+       "keywords": "test"
+     }'
+   ```
+
+2. **Check Inngest Dashboard:**
+   - Go to "Runs" tab
+   - You should see a new run for `generate-outline-standalone`
+   - If you see an error, check the error message
+
+3. **Check Railway Logs:**
+   - Look for any errors when the webhook is called
+   - Verify the event was sent to Inngest successfully
+
+### Common Issues:
+
+**Issue: Functions don't appear in Inngest Dashboard**
+- **Solution:** Wait a few minutes after deployment, then check again. Inngest discovers functions when your server starts.
+
+**Issue: "App URL not reachable" in Inngest**
+- **Solution:** Verify your Railway app is running and the `/api/inngest` endpoint is accessible. Check Railway logs for errors.
+
+**Issue: Old functions still showing in Inngest**
+- **Solution:** This is normal - old function runs may still appear. New runs should use the new functions. You can archive old functions in the Inngest dashboard.
+
+**Issue: Error persists after re-sync**
+- **Solution:** 
+  1. Double-check that all functions are exported and registered correctly
+  2. Verify the Inngest app URL in dashboard matches your Railway URL
+  3. Check Railway logs for any startup errors
+  4. Try redeploying the application
+
+---
+
 ## Getting More Help
 
 If you're still stuck:
