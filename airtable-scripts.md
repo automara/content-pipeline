@@ -114,6 +114,8 @@ If either of these fields is missing or empty, the webhook will return a 400 err
 - `outline` - The Outline field (use `{Outline}` in Airtable)
 - `feedback` - The Outline Feedback field (use `{Outline Feedback}` in Airtable, optional)
 
+**Note:** You do NOT need to include `title` or `contentType` as input variables. The webhook handler will fetch the full record from Airtable to get these fields automatically.
+
 **Script:**
 ```javascript
 // Trigger: When Status changes to "Outline Approved"
@@ -121,6 +123,9 @@ If either of these fields is missing or empty, the webhook will return a 400 err
 //
 // This script sends a webhook to continue the pipeline after outline approval.
 // It triggers the generate-draft function in Inngest.
+//
+// IMPORTANT: The webhook URL must be /api/webhook/outline-approved
+// (NOT /api/webhook/start - that's for the first workflow step)
 
 let inputConfig = input.config();
 
@@ -128,7 +133,8 @@ let recordId = inputConfig.recordId;
 let outline = inputConfig.outline || '';
 let feedback = inputConfig.feedback || '';
 
-// Your Railway API URL - should be: https://your-app.railway.app/api/webhook/outline-approved
+// Your Railway API URL - MUST be: https://your-app.railway.app/api/webhook/outline-approved
+// This is DIFFERENT from the start webhook URL!
 const WEBHOOK_URL = input.secret('WEBHOOK_URL');
 const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
 
@@ -154,7 +160,10 @@ if (!response.ok) {
 }
 ```
 
-**Note:** Make sure `WEBHOOK_URL` secret is set to the full URL including `/api/webhook/outline-approved`
+**Important Notes:**
+1. **Webhook URL:** Make sure `WEBHOOK_URL` secret is set to the full URL including `/api/webhook/outline-approved` (NOT `/api/webhook/start`)
+2. **Input Variables:** Only include `recordId`, `outline`, and `feedback` - do NOT add `title` or `contentType` as input variables. The webhook handler fetches these from Airtable automatically.
+3. **Why:** The outline-approved webhook handler fetches the full record from Airtable to get `title`, `contentType`, and other fields needed for draft generation. You only need to send the minimal payload (`recordId`, `outline`, `feedback`).
 
 **Important - Required Fields:**
 The webhook handler will fetch the full record from Airtable to get additional context needed for draft generation. The following fields **must be filled** in the Airtable record, or the webhook will fail with a clear error message:
