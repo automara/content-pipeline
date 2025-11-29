@@ -4,6 +4,50 @@ This document helps you debug common issues with the Automara Engine.
 
 ---
 
+## Architecture: Separate Stage Functions
+
+The content generation workflow uses **separate stage functions** instead of one monolithic pipeline:
+
+1. **Generate Outline** - Triggered by `content/pipeline.start`, completes when outline is saved
+2. **Generate Draft** - Triggered by `content/outline.approved` (with full context), completes when draft is saved
+3. **Finalize Content** - Triggered by `content/draft.approved`, completes immediately
+
+**Why separate stages?**
+- Each function completes in seconds/minutes instead of staying "Running" for days
+- Better error isolation (outline errors don't affect draft generation)
+- Clearer observability in Inngest dashboard (each stage is a separate run)
+- No long-running function states blocking resources
+
+**Note:** The old monolithic `content-pipeline.ts` is kept for comparison/testing but is deprecated. Both approaches can run in parallel temporarily.
+
+---
+
+## Error: Webhook validation errors for outline/draft approval
+
+**Error Message:**
+```json
+{
+  "error": "[{ \"code\": \"invalid_type\", \"expected\": \"string\", \"received\": \"undefined\", \"path\": [\"title\"], \"message\": \"Required\" }]"
+}
+```
+
+**What this means:**
+The outline-approved or draft-approved webhook tried to send an event, but the event schema expected more data than was provided (like `title` and `contentType`).
+
+**Solution:**
+This was fixed by enhancing the webhook handlers to fetch the full record from Airtable and send enriched events with all needed context. The webhooks now:
+
+1. Accept minimal payload from Airtable (recordId, outline/draft, feedback)
+2. Fetch full record to get all context (title, contentType, industryId, personaId, keywords)
+3. Send enriched event with all context needed for the next stage
+
+**If you still see this error:**
+- Check that the webhook is calling the correct endpoint (`/api/webhook/outline-approved` or `/api/webhook/draft-approved`)
+- Verify the record exists in Airtable and has all required fields (Title, Content Type, etc.)
+- Check server logs to see what data the webhook received
+
+---
+
 ## Error: "Could not find what you are looking for"
 
 This error means Airtable can't find something you're asking for. It could be:

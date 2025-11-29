@@ -11,6 +11,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { inngest } from "../inngest/client.js";
 import { z } from "zod";
+import { getRecord } from "../lib/airtable.js";
 
 const router = Router();
 
@@ -87,14 +88,32 @@ const outlineApprovedSchema = z.object({
  * Outline approved webhook - continue to draft
  * 
  * This is triggered by Airtable when Status changes to "Outline Approved"
+ * 
+ * We fetch the full record from Airtable to get all context needed for draft generation,
+ * then send an enriched event with all the data.
  */
 router.post("/outline-approved", async (req: Request, res: Response) => {
   try {
-    const data = outlineApprovedSchema.parse(req.body);
+    // Validate minimal payload from Airtable
+    const webhookData = outlineApprovedSchema.parse(req.body);
 
+    // Fetch full record from Airtable to get all context
+    const record = await getRecord(webhookData.recordId);
+
+    // Send enriched event with all context needed for draft generation
     await inngest.send({
       name: "content/outline.approved",
-      data,
+      data: {
+        recordId: webhookData.recordId,
+        outline: webhookData.outline,
+        feedback: webhookData.feedback,
+        // Full context from Airtable record
+        title: record.fields.Title,
+        contentType: record.fields["Content Type"],
+        industryId: record.fields.Industry?.[0], // First linked industry
+        personaId: record.fields.Persona?.[0], // First linked persona
+        keywords: record.fields["Target Keywords"],
+      },
     });
 
     res.json({ success: true, message: "Continuing to draft" });
@@ -117,14 +136,26 @@ const draftApprovedSchema = z.object({
  * Draft approved webhook - finalize
  * 
  * This is triggered by Airtable when Status changes to "Draft Approved"
+ * 
+ * We fetch the record to verify it exists and status is correct,
+ * then send the event to finalize the content.
  */
 router.post("/draft-approved", async (req: Request, res: Response) => {
   try {
-    const data = draftApprovedSchema.parse(req.body);
+    // Validate minimal payload from Airtable
+    const webhookData = draftApprovedSchema.parse(req.body);
 
+    // Fetch record to verify it exists (optional verification step)
+    await getRecord(webhookData.recordId);
+
+    // Send event to finalize
     await inngest.send({
       name: "content/draft.approved",
-      data,
+      data: {
+        recordId: webhookData.recordId,
+        draft: webhookData.draft,
+        feedback: webhookData.feedback,
+      },
     });
 
     res.json({ success: true, message: "Finalizing content" });

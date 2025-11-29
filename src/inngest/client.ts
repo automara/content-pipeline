@@ -33,6 +33,12 @@ type Events = {
       recordId: string;
       outline: string;
       feedback?: string;
+      // Full context needed for draft generation
+      title: string;
+      contentType: string;
+      industryId?: string;
+      personaId?: string;
+      keywords?: string;
     };
   };
   "content/draft.approved": {

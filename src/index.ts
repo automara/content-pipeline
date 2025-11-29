@@ -18,6 +18,7 @@ import { inngest } from "./inngest/client.js";
 import { contentPipeline } from "./inngest/functions/content-pipeline.js";
 import { generateOutline } from "./inngest/functions/generate-outline.js";
 import { generateDraft } from "./inngest/functions/generate-draft.js";
+import { finalizeContent } from "./inngest/functions/finalize-content.js";
 import { batchTrigger } from "./inngest/functions/batch-trigger.js";
 import webhookRouter from "./routes/webhook.js";
 
@@ -105,9 +106,10 @@ app.use(
   serve({
     client: inngest,
     functions: [
-      contentPipeline,
+      contentPipeline, // Deprecated - kept for comparison
       generateOutline,
       generateDraft,
+      finalizeContent,
       batchTrigger,
     ],
   })

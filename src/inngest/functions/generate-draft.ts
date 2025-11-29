@@ -1,13 +1,16 @@
 /**
  * Generate Draft - Standalone Function
  * 
- * This is an alternative approach - a standalone function for generating drafts.
- * Useful if you want more granular control per step instead of one big pipeline.
+ * This function generates a draft after outline approval and then completes (no waiting).
+ * It replaces the monolithic pipeline's draft generation stage with a separate,
+ * self-contained function that ends immediately after saving the draft to Airtable.
+ * 
+ * Triggered by the "content/outline.approved" event which includes all context needed
+ * for draft generation (title, contentType, industryId, personaId, keywords, outline, feedback).
  */
 
 import { inngest } from "../client.js";
 import {
-  getRecord,
   updateRecord,
   getIndustry,
   getPersona,
@@ -15,62 +18,112 @@ import {
 } from "../../lib/airtable.js";
 import { getPrompt } from "../../lib/langfuse.js";
 import { generate } from "../../lib/claude.js";
+import { getContextBundle } from "../../lib/context.js";
 
 /**
  * Standalone draft generation function
  * 
- * This function can be triggered independently to generate a draft
- * without running the full pipeline.
+ * Triggered by "content/outline.approved" event with full context. Generates draft
+ * using the approved outline and saves to Airtable, then the function ends.
+ * The draft-approved webhook will trigger finalization separately.
  */
 export const generateDraft = inngest.createFunction(
   {
     id: "generate-draft-standalone",
     retries: 3,
   },
-  { event: "content/draft.generate" },
+  { event: "content/outline.approved" },
   async ({ event, step }) => {
-    const { recordId } = event.data;
+    // Extract all context from the event (enriched by the webhook)
+    const {
+      recordId,
+      outline,
+      feedback,
+      title,
+      contentType,
+      industryId,
+      personaId,
+      keywords,
+    } = event.data;
 
-    const record = await step.run("get-record", async () => {
-      return await getRecord(recordId);
+    // Update status to Drafting
+    await step.run("update-drafting-status", async () => {
+      await updateRecord(recordId, {
+        Status: "Drafting",
+      });
     });
 
+    // Assemble context - load from context files and Airtable
     const context = await step.run("assemble-context", async () => {
+      // Load static context from markdown files in /context folder
+      const staticContext = getContextBundle([
+        "company-profile",
+        "voice-guidelines",
+        "product-overview",
+        "differentiators",
+      ]);
+
+      // Load dynamic context from Airtable (optional, for things that change often)
       const artifacts = await getActiveArtifacts();
-      const industryId = record.fields.Industry?.[0];
-      const personaId = record.fields.Persona?.[0];
+      
+      // Load industry/persona from Airtable (use IDs from event)
+      const industry = industryId ? await getIndustry(industryId) : null;
+      const persona = personaId ? await getPersona(personaId) : null;
 
       return {
-        companyProfile: artifacts["company_profile"] || "",
-        voiceGuidelines: artifacts["voice_guidelines"] || "",
-        industry: industryId ? await getIndustry(industryId) : null,
-        persona: personaId ? await getPersona(personaId) : null,
+        // From markdown files (stable, version-controlled)
+        companyProfile: staticContext["company-profile"],
+        voiceGuidelines: staticContext["voice-guidelines"],
+        productOverview: staticContext["product-overview"],
+        differentiators: staticContext["differentiators"],
+        
+        // From Airtable Context Artifacts table (optional override)
+        ...artifacts,
+        
+        // From Airtable linked records
+        industry,
+        persona,
       };
     });
 
-    const draft = await step.run("generate", async () => {
-      const contentType = record.fields["Content Type"];
-      const prompt = await getPrompt(`draft-${contentType}`, {
-        title: record.fields.Title,
+    // Generate draft using all context
+    const draft = await step.run("generate-draft", async () => {
+      const promptTemplate = await getPrompt(`draft-${contentType}`, {
+        title,
+        // From context files
         companyProfile: context.companyProfile,
         voiceGuidelines: context.voiceGuidelines,
-        outline: record.fields.Outline || "",
-        feedback: record.fields["Outline Feedback"] || "",
-        keywords: record.fields["Target Keywords"] || "",
+        productOverview: context.productOverview,
+        differentiators: context.differentiators,
+        // From Airtable industry/persona
+        industryName: context.industry?.name || "General",
+        personaName: context.persona?.name || "General audience",
+        // From previous step (outline approval)
+        outline: outline,
+        feedback: feedback || "",
+        // From Airtable row
+        keywords: keywords || "",
       });
 
-      return (
-        await generate({ prompt, recordId, step: "draft", maxTokens: 8192 })
-      ).text;
+      const result = await generate({
+        prompt: promptTemplate,
+        recordId,
+        step: "draft",
+        maxTokens: 8192,
+      });
+
+      return result.text;
     });
 
-    await step.run("update-record", async () => {
+    // Update Airtable and end function (no waiting for approval)
+    await step.run("update-draft", async () => {
       await updateRecord(recordId, {
         Draft: draft,
         Status: "Draft Review",
       });
     });
 
+    // Function completes here - draft-approved webhook will trigger finalization
     return { recordId, status: "draft-ready" };
   }
 );

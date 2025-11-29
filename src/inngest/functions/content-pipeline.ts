@@ -1,6 +1,19 @@
 /**
  * Content Pipeline - Main Orchestration Function
  * 
+ * ⚠️ DEPRECATED: This monolithic pipeline is kept for testing/comparison purposes.
+ * The recommended approach is to use separate stage functions:
+ * - generate-outline.ts (listens to content/pipeline.start)
+ * - generate-draft.ts (listens to content/outline.approved)
+ * - finalize-content.ts (listens to content/draft.approved)
+ * 
+ * The separate functions complete quickly and don't stay in "Running" state while
+ * waiting for approvals, providing better error handling and observability.
+ * 
+ * This function stays in "Running" state for days while waiting for manual approvals,
+ * which makes it harder to debug and monitor. Both approaches can run in parallel
+ * temporarily for comparison.
+ * 
  * This is the main workflow that orchestrates the entire content generation process:
  * 1. Assemble context (company info, industry, persona)
  * 2. Generate outline
