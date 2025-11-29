@@ -143,6 +143,14 @@ if (!response.ok) {
 
 **Note:** Make sure `WEBHOOK_URL` secret is set to the full URL including `/api/webhook/outline-approved`
 
+**Important - Required Fields:**
+The webhook handler will fetch the full record from Airtable to get additional context needed for draft generation. The following fields **must be filled** in the Airtable record, or the webhook will fail with a clear error message:
+
+- **Title** - Required. Must be a non-empty string.
+- **Content Type** - Required. Must be a non-empty string (e.g., "blog", "industry_page").
+
+If either of these fields is missing or empty, the webhook will return a 400 error indicating which field is missing. Make sure to fill these fields in your Airtable record before changing the Status to "Outline Approved".
+
 ---
 
 ## Script 3: Finalize After Draft Approval (Status → "Draft Approved")

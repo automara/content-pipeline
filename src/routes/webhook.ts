@@ -100,19 +100,81 @@ router.post("/outline-approved", async (req: Request, res: Response) => {
     // Fetch full record from Airtable to get all context
     const record = await getRecord(webhookData.recordId);
 
-    // Send enriched event with all context needed for draft generation
+    // Validate required fields exist before sending event
+    // TypeScript Note: We check these fields exist because they're required
+    // for draft generation. If they're missing, we return a clear error.
+    // Airtable fields can be undefined if not filled in, so we need to check explicitly.
+    const title = record.fields.Title;
+    const contentType = record.fields["Content Type"];
+
+    // Log what we received for debugging
+    console.log("Fetched record fields:", {
+      recordId: webhookData.recordId,
+      hasTitle: !!title,
+      titleType: typeof title,
+      titleValue: title,
+      hasContentType: !!contentType,
+      contentTypeType: typeof contentType,
+      contentTypeValue: contentType,
+    });
+
+    // Validate Title - must exist and be a non-empty string
+    if (title === undefined || title === null) {
+      return res.status(400).json({
+        error: "Missing required field: Title. Please ensure the Title field is filled in the Airtable record.",
+        recordId: webhookData.recordId,
+      });
+    }
+
+    if (typeof title !== "string") {
+      return res.status(400).json({
+        error: `Invalid Title field type. Expected string, got ${typeof title}.`,
+        recordId: webhookData.recordId,
+      });
+    }
+
+    if (title.trim() === "") {
+      return res.status(400).json({
+        error: "Title field is empty. Please ensure the Title field has a value in the Airtable record.",
+        recordId: webhookData.recordId,
+      });
+    }
+
+    // Validate Content Type - must exist and be a non-empty string
+    if (contentType === undefined || contentType === null) {
+      return res.status(400).json({
+        error: 'Missing required field: Content Type. Please ensure the Content Type field is filled in the Airtable record.',
+        recordId: webhookData.recordId,
+      });
+    }
+
+    if (typeof contentType !== "string") {
+      return res.status(400).json({
+        error: `Invalid Content Type field type. Expected string, got ${typeof contentType}.`,
+        recordId: webhookData.recordId,
+      });
+    }
+
+    if (contentType.trim() === "") {
+      return res.status(400).json({
+        error: 'Content Type field is empty. Please ensure the Content Type field has a value in the Airtable record.',
+        recordId: webhookData.recordId,
+      });
+    }
+
+    // All validations passed - send enriched event with all context needed for draft generation
     await inngest.send({
       name: "content/outline.approved",
       data: {
         recordId: webhookData.recordId,
         outline: webhookData.outline,
         feedback: webhookData.feedback,
-        // Full context from Airtable record
-        title: record.fields.Title,
-        contentType: record.fields["Content Type"],
-        industryId: record.fields.Industry?.[0], // First linked industry
-        personaId: record.fields.Persona?.[0], // First linked persona
-        keywords: record.fields["Target Keywords"],
+        // Full context from Airtable record (now validated)
+        title: title,
+        contentType: contentType,
+        industryId: record.fields.Industry?.[0], // First linked industry (optional)
+        personaId: record.fields.Persona?.[0], // First linked persona (optional)
+        keywords: record.fields["Target Keywords"] || undefined, // Optional
       },
     });
 
