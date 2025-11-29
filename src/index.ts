@@ -15,7 +15,8 @@ import "dotenv/config"; // Load environment variables from .env file
 import express from "express";
 import { serve } from "inngest/express";
 import { inngest } from "./inngest/client.js";
-import { contentPipeline } from "./inngest/functions/content-pipeline.js";
+// Old monolithic pipeline - disabled to use separate stage functions instead
+// import { contentPipeline } from "./inngest/functions/content-pipeline.js";
 import { generateOutline } from "./inngest/functions/generate-outline.js";
 import { generateDraft } from "./inngest/functions/generate-draft.js";
 import { finalizeContent } from "./inngest/functions/finalize-content.js";
@@ -106,7 +107,7 @@ app.use(
   serve({
     client: inngest,
     functions: [
-      contentPipeline, // Deprecated - kept for comparison
+      // contentPipeline, // Disabled - using separate stage functions instead
       generateOutline,
       generateDraft,
       finalizeContent,
