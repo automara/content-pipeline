@@ -12,11 +12,51 @@
 
 import { Langfuse } from "langfuse";
 
-// Initialize Langfuse client with credentials from environment variables
-export const langfuse = new Langfuse({
-  publicKey: process.env.LANGFUSE_PUBLIC_KEY!,
-  secretKey: process.env.LANGFUSE_SECRET_KEY!,
-  baseUrl: process.env.LANGFUSE_HOST || "https://cloud.langfuse.com",
+// Lazy initialization of Langfuse client to ensure environment variables are loaded
+let langfuseInstance: Langfuse | null = null;
+
+/**
+ * Get or create the Langfuse client instance
+ * This ensures the client is initialized with valid values
+ */
+function getLangfuseClient(): Langfuse {
+  if (langfuseInstance) {
+    return langfuseInstance;
+  }
+
+  const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
+  const secretKey = process.env.LANGFUSE_SECRET_KEY;
+  const host = process.env.LANGFUSE_HOST || "https://cloud.langfuse.com";
+
+  if (!publicKey || !secretKey) {
+    throw new Error(
+      "Langfuse credentials are missing. Please set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY environment variables."
+    );
+  }
+
+  // Ensure baseUrl is always a valid string (never undefined or empty)
+  const baseUrl = host.trim() || "https://cloud.langfuse.com";
+
+  langfuseInstance = new Langfuse({
+    publicKey,
+    secretKey,
+    baseUrl,
+  });
+
+  return langfuseInstance;
+}
+
+// Export a getter that ensures the client is properly initialized
+export const langfuse = new Proxy({} as Langfuse, {
+  get(_target, prop) {
+    const client = getLangfuseClient();
+    const value = (client as any)[prop];
+    // If it's a function, bind it to the client instance
+    if (typeof value === "function") {
+      return value.bind(client);
+    }
+    return value;
+  },
 });
 
 /**
@@ -44,9 +84,12 @@ export async function getPrompt(
   }
 
   try {
+    // Get the Langfuse client (ensures it's properly initialized)
+    const client = getLangfuseClient();
+    
     // Get prompt from Langfuse with 5 minute cache
     // TypeScript Note: The SDK returns a prompt object with a compile() method
-    const prompt = await langfuse.getPrompt(name, undefined, {
+    const prompt = await client.getPrompt(name, undefined, {
       cacheTtlSeconds: 300, // Cache for 5 minutes
     });
 
@@ -122,7 +165,8 @@ export function createTrace(options: {
   recordId: string;
   metadata?: Record<string, unknown>; // unknown means "any type, but we need to check it"
 }): ReturnType<Langfuse["trace"]> {
-  return langfuse.trace({
+  const client = getLangfuseClient();
+  return client.trace({
     name: options.name,
     metadata: {
       recordId: options.recordId,
