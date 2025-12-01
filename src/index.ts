@@ -20,6 +20,7 @@ import { generateDraft } from "./inngest/functions/generate-draft.js";
 import { finalizeContent } from "./inngest/functions/finalize-content.js";
 import { batchTrigger } from "./inngest/functions/batch-trigger.js";
 import { keywordResearch } from "./inngest/functions/keyword-research.js";
+import { autoCluster } from "./inngest/functions/auto-cluster.js";
 import { gapAnalysis } from "./inngest/functions/gap-analysis.js";
 import { generateTitles } from "./inngest/functions/generate-titles.js";
 import { promoteToPipeline } from "./inngest/functions/promote-to-pipeline.js";
@@ -118,6 +119,7 @@ app.use(
       finalizeContent,
       batchTrigger,
       keywordResearch,
+      autoCluster,
       gapAnalysis,
       generateTitles,
       promoteToPipeline,
@@ -143,8 +145,6 @@ app.listen(port, () => {
 
   // Optional environment variables for keyword ideation system
   const optionalEnvVars = [
-    "AIRTABLE_KEYWORDS_BASE_ID",
-    "AIRTABLE_KEYWORDS_API_KEY", // Optional - falls back to AIRTABLE_API_KEY
     "DATAFORSEO_LOGIN",
     "DATAFORSEO_PASSWORD",
   ];
@@ -173,19 +173,11 @@ app.listen(port, () => {
   }
 
   // Check keyword ideation system configuration
-  const keywordsBaseId = process.env.AIRTABLE_KEYWORDS_BASE_ID;
-  const keywordsApiKey = process.env.AIRTABLE_KEYWORDS_API_KEY;
   const dataForSEOLogin = process.env.DATAFORSEO_LOGIN;
   const dataForSEOPassword = process.env.DATAFORSEO_PASSWORD;
 
-  if (keywordsBaseId || dataForSEOLogin || dataForSEOPassword) {
+  if (dataForSEOLogin || dataForSEOPassword) {
     console.log("🔍 Keyword Ideation System Configuration:");
-    console.log(
-      `   Keywords Base ID: ${keywordsBaseId ? `${keywordsBaseId.substring(0, 6)}...${keywordsBaseId.substring(keywordsBaseId.length - 4)}` : "❌ NOT SET"}`
-    );
-    console.log(
-      `   Keywords API Key: ${keywordsApiKey ? `${keywordsApiKey.substring(0, 6)}...${keywordsApiKey.substring(keywordsApiKey.length - 4)}` : "Using main API key (AIRTABLE_API_KEY)"}`
-    );
     console.log(
       `   DataForSEO Login: ${dataForSEOLogin ? `${dataForSEOLogin.substring(0, 6)}...` : "❌ NOT SET"}`
     );
@@ -193,7 +185,7 @@ app.listen(port, () => {
       `   DataForSEO Password: ${dataForSEOPassword ? "***SET***" : "❌ NOT SET"}`
     );
 
-    if (!keywordsBaseId || !dataForSEOLogin || !dataForSEOPassword) {
+    if (!dataForSEOLogin || !dataForSEOPassword) {
       console.warn(
         "⚠️  Warning: Keyword ideation system is partially configured. Some features may not work."
       );

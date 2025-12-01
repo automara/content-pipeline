@@ -14,7 +14,7 @@ import type { ContentRecord, Industry, Persona } from "../types/index.js";
 // Initialize Airtable client with API key from environment variables
 // TypeScript Note: process.env values are strings or undefined, so we use
 // the "!" operator to tell TypeScript we're sure this value exists
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
+export const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID!
 );
 
@@ -23,6 +23,11 @@ export const contentTable = base("Content Pipeline");
 export const industriesTable = base("Industries");
 export const personasTable = base("Personas");
 export const artifactsTable = base("Context Artifacts");
+
+// Keyword ideation tables (consolidated into same base)
+export const keywordBankTable = base("Keyword Bank");
+export const contentIdeasTable = base("Content Ideas");
+export const researchJobsTable = base("Research Jobs");
 
 /**
  * Get a single content record by its ID

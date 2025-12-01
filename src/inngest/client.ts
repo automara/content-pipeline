@@ -72,12 +72,14 @@ type Events = {
   };
   "keyword/research.start": {
     data: {
-      seedTopics: string[];
-      industryId?: string;
-      personaId?: string;
-      problemId?: string;
-      expandKeywords?: boolean;
-      limit?: number;
+      recordId: string;
+      keyword: string;
+    };
+  };
+  "keyword/cluster.auto": {
+    data: {
+      recordId: string;
+      seedTopic: string;
     };
   };
   "keyword/gap-analysis.start": {
@@ -85,7 +87,7 @@ type Events = {
       scope?: "all" | "industries" | "personas" | "problems";
     };
   };
-  "keyword/generate-titles": {
+  "keyword/generate-title": {
     data: {
       recordId: string;
     };
@@ -93,7 +95,6 @@ type Events = {
   "keyword/promote": {
     data: {
       recordId: string;
-      selectedTitleIndex?: number;
     };
   };
 };

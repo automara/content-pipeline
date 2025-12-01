@@ -1,12 +1,12 @@
 /**
  * Generate Titles Inngest Function
  * 
- * This function generates SEO-optimized title suggestions for approved
- * keyword ideas using Claude. It builds a comprehensive prompt with
- * keyword data, entity context, and competitor analysis.
+ * This function generates SEO-optimized title suggestions and content angles
+ * for Content Ideas records when status is set to "Generate Title".
+ * It works with clustered keywords linked from Keyword Bank.
  * 
  * TypeScript Note: This function uses Claude to generate creative content
- * (titles) based on structured data (keyword metrics, SERP data, etc.).
+ * (titles) based on structured data (keyword clusters, metrics, SERP data, etc.).
  */
 
 import { inngest } from "../client.js";
@@ -14,8 +14,8 @@ import { generate } from "../../lib/claude.js";
 import {
   getIdeaRecord,
   updateIdeaRecord,
+  getKeywordBankRecord,
 } from "../../lib/airtable-keywords.js";
-import type { ContentIdeaRecord } from "../../types/index.js";
 
 /**
  * Build the prompt for title generation
@@ -24,42 +24,42 @@ import type { ContentIdeaRecord } from "../../types/index.js";
  * that includes all the context Claude needs to generate good titles.
  */
 function buildTitlePrompt(ctx: {
-  keyword: string;
-  searchIntent: string;
-  searchVolume: number;
+  clusterName: string;
+  primaryKeyword: string;
+  keywords: Array<{
+    keyword: string;
+    volume: number;
+    difficulty: number;
+  }>;
   contentType: string;
-  serpFeatures: string[];
-  competitorUrls: string;
+  intent: string;
   industry?: any;
   persona?: any;
   problem?: any;
 }): string {
-  return `You are an SEO content strategist. Generate title ideas and content angles for a piece targeting this keyword.
+  return `Generate an SEO title and content angles for a content cluster.
 
-## Keyword Data
-- Primary Keyword: ${ctx.keyword}
-- Search Intent: ${ctx.searchIntent}
-- Monthly Volume: ${ctx.searchVolume}
-- Suggested Content Type: ${ctx.contentType}
-- SERP Features Present: ${ctx.serpFeatures.join(", ") || "None"}
+## Cluster: ${ctx.clusterName}
+Primary Keyword: ${ctx.primaryKeyword}
+Content Type: ${ctx.contentType}
+Intent: ${ctx.intent}
 
-## Competitor URLs (Top 5)
-${ctx.competitorUrls || "Not available"}
+## Keywords in Cluster
+${ctx.keywords
+  .map((kw) => `- "${kw.keyword}" (${kw.volume}/mo, KD ${kw.difficulty})`)
+  .join("\n")}
 
 ${
   ctx.industry
-    ? `## Industry Context
-Name: ${ctx.industry.Name || ""}
-Description: ${ctx.industry.Description || ""}
-Pain Points: ${ctx.industry["Pain Points"] || ""}
+    ? `## Industry: ${ctx.industry.Name || ""}
+${ctx.industry["Pain Points"] || ctx.industry.Description || ""}
 `
     : ""
 }
 
 ${
   ctx.persona
-    ? `## Target Persona
-Name: ${ctx.persona["Persona Name"] || ctx.persona.Name || ""}
+    ? `## Persona: ${ctx.persona["Persona Name"] || ctx.persona.Name || ""}
 Role: ${ctx.persona["Role/Title"] || ctx.persona.Title || ""}
 Goals: ${ctx.persona.Goals || ""}
 Pain Points: ${ctx.persona["Pain Points"] || ""}
@@ -69,47 +69,19 @@ Pain Points: ${ctx.persona["Pain Points"] || ""}
 
 ${
   ctx.problem
-    ? `## Problem Being Addressed
-Name: ${ctx.problem["Problem Name"] || ctx.problem.Name || ""}
-Description: ${ctx.problem.Description || ""}
+    ? `## Problem: ${ctx.problem["Problem Name"] || ctx.problem.Name || ""}
+${ctx.problem.Description || ""}
 `
     : ""
 }
 
-## Instructions
-
-Generate 5 title options and 3 content angles for this keyword.
-
-### Title Guidelines:
-1. Include the primary keyword naturally
-2. Keep titles under 60 characters for SERP display
-3. Match the search intent (${ctx.searchIntent})
-4. If Featured Snippet is present, consider question-format titles
-5. Include a number or specific claim when appropriate
-6. Vary the formats: how-to, list, question, statement, comparison
-
-### Content Angle Guidelines:
-1. Describe a unique angle or hook for the content
-2. Explain what differentiates this from competitor content
-3. Include specific sections or subtopics to cover
-
-## Output Format
-
-Return your response in this exact JSON format:
+## Output JSON only (no markdown, no explanation):
 {
-  "titles": [
-    {"title": "Title 1", "charCount": 45, "format": "how-to"},
-    {"title": "Title 2", "charCount": 52, "format": "list"},
-    ...
+  "title": "SEO title under 60 chars with primary keyword",
+  "angles": [
+    {"hook": "Opening premise", "sections": ["Section 1", "Section 2"]}
   ],
-  "contentAngles": [
-    {
-      "angle": "Description of angle",
-      "hook": "Opening hook or premise",
-      "sections": ["Section 1", "Section 2", "Section 3"]
-    },
-    ...
-  ]
+  "competitorAnalysis": "What competitors do, how to differentiate"
 }`;
 }
 
@@ -120,8 +92,9 @@ Return your response in this exact JSON format:
  * Claude adds extra text around the JSON.
  */
 function parseTitleResponse(response: string): {
-  titles: any[];
-  contentAngles: string;
+  title: string;
+  angles: string;
+  competitorAnalysis: string;
 } {
   try {
     // Extract JSON from response (Claude might add markdown formatting)
@@ -132,15 +105,17 @@ function parseTitleResponse(response: string): {
 
     const parsed = JSON.parse(jsonMatch[0]);
     return {
-      titles: parsed.titles || [],
-      contentAngles: JSON.stringify(parsed.contentAngles || [], null, 2),
+      title: parsed.title || "",
+      angles: JSON.stringify(parsed.angles || [], null, 2),
+      competitorAnalysis: parsed.competitorAnalysis || "",
     };
   } catch (e) {
     console.error("Failed to parse title response:", e);
-    // Return empty arrays as fallback
+    // Return defaults as fallback
     return {
-      titles: [],
-      contentAngles: response, // Return raw response as fallback
+      title: "",
+      angles: response,
+      competitorAnalysis: "",
     };
   }
 }
@@ -148,43 +123,53 @@ function parseTitleResponse(response: string): {
 /**
  * Generate Titles Function
  * 
- * Triggered by: keyword/generate-titles event
+ * Triggered by: keyword/generate-title event
+ * 
+ * Event data: { recordId: string }
  */
 export const generateTitles = inngest.createFunction(
   {
     id: "generate-titles",
     retries: 2,
   },
-  { event: "keyword/generate-titles" },
+  { event: "keyword/generate-title" },
   async ({ event, step }) => {
     const { recordId } = event.data;
 
-    // Get the idea record
+    // Step 1: Get the Content Ideas record
     const idea = await step.run("get-idea", async () => {
       return await getIdeaRecord(recordId);
     });
 
-    const keyword = idea.fields.Keyword;
-    const searchIntent = idea.fields["Search Intent"] || "Informational";
-    const searchVolume = idea.fields["Search Volume"] || 0;
-    const contentType =
-      idea.fields["Content Type Suggestion"] || "blog";
-    const serpFeatures = idea.fields["SERP Features"] || [];
-    const competitorUrls = idea.fields["Competitor URLs"] || "[]";
+    // Step 2: Update status to "Generating"
+    await step.run("status-generating", async () => {
+      await updateIdeaRecord(recordId, {
+        Status: "Generating",
+      });
+    });
 
-    // Parse competitor URLs if stored as JSON string
-    let competitorUrlsArray: string[] = [];
-    try {
-      if (typeof competitorUrls === "string") {
-        competitorUrlsArray = JSON.parse(competitorUrls);
-      }
-    } catch {
-      // If parsing fails, use empty array
-      competitorUrlsArray = [];
+    // Step 3: Get linked keywords from Keyword Bank
+    const keywordIds = idea.fields.Keywords || [];
+    if (keywordIds.length === 0) {
+      await step.run("no-keywords-error", async () => {
+        await updateIdeaRecord(recordId, {
+          Status: "Draft",
+        });
+      });
+      return {
+        status: "error",
+        message: "No keywords linked to this Content Idea",
+      };
     }
 
-    // Get entity context if linked (stored as text IDs, would need to fetch)
-    // For now, we'll work with what we have in the idea record
+    const keywords = await step.run("get-keywords", async () => {
+      return await Promise.all(
+        keywordIds.map((id: string) => getKeywordBankRecord(id))
+      );
+    });
+
+    // Step 4: Get entity context if linked (would need separate tables)
+    // For now, we'll work with what's in the Content Ideas record
     const industry = idea.fields.Industry?.[0]
       ? { Name: idea.fields.Industry[0] }
       : undefined;
@@ -195,51 +180,51 @@ export const generateTitles = inngest.createFunction(
       ? { Name: idea.fields.Problem[0] }
       : undefined;
 
-    // Update status to "Generating"
-    await step.run("status-generating", async () => {
-      await updateIdeaRecord(recordId, { Status: "Generating" });
-    });
-
-    // Build prompt
+    // Step 5: Build prompt with clustered keyword data
     const titlePrompt = buildTitlePrompt({
-      keyword,
-      searchIntent,
-      searchVolume,
-      contentType,
-      serpFeatures,
-      competitorUrls: competitorUrlsArray.join("\n"),
+      clusterName: idea.fields["Cluster Name"] || "",
+      primaryKeyword: idea.fields["Primary Keyword"] || keywords[0].fields.Keyword,
+      keywords: keywords.map((kw) => ({
+        keyword: kw.fields.Keyword,
+        volume: kw.fields["Search Volume"] || 0,
+        difficulty: kw.fields["Keyword Difficulty"] || 50,
+      })),
+      contentType: idea.fields["Content Type"] || "blog",
+      intent: idea.fields["Search Intent"] || "Informational",
       industry,
       persona,
       problem,
     });
 
-    // Generate titles with Claude
-    const titleResponse = await step.run("generate-titles", async () => {
+    // Step 6: Generate title + angles with Claude
+    const titleResponse = await step.run("generate", async () => {
       return await generate({
         prompt: titlePrompt,
         recordId,
-        step: "title-generation",
-        maxTokens: 1000,
+        step: "generate-title",
+        maxTokens: 1500,
       });
     });
 
-    // Parse titles from response
-    const { titles, contentAngles } = parseTitleResponse(titleResponse.text);
+    // Step 7: Parse response
+    const parsed = parseTitleResponse(titleResponse.text);
 
-    // Update record with generated content
-    await step.run("save-titles", async () => {
+    // Step 8: Update Content Ideas record
+    await step.run("save-title", async () => {
       await updateIdeaRecord(recordId, {
-        "Title Ideas": JSON.stringify(titles),
-        "Content Angles": contentAngles,
-        Status: "Ready",
+        Title: parsed.title,
+        "Content Angles": parsed.angles,
+        "Competitor Analysis": parsed.competitorAnalysis,
+        Status: "Review",
       });
     });
 
     return {
       status: "complete",
       recordId,
-      titlesGenerated: titles.length,
+      title: parsed.title,
     };
   }
 );
+
 

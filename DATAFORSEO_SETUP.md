@@ -168,3 +168,4 @@ Once your DataForSEO credentials are set up:
 3. ✅ Monitor your DataForSEO credit usage in their dashboard
 4. ✅ Set up alerts for low credit balance if available
 
+

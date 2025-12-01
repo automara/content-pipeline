@@ -36,23 +36,19 @@ const authenticateWebhook = (
 router.use(authenticateWebhook);
 
 /**
- * Zod schema for manual keyword research
+ * Zod schema for keyword research (single record)
  */
 const researchSchema = z.object({
-  seedTopics: z.array(z.string()).min(1),
-  industryId: z.string().optional(),
-  personaId: z.string().optional(),
-  problemId: z.string().optional(),
-  expandKeywords: z.boolean().optional(),
-  limit: z.number().optional(),
+  recordId: z.string(),
+  keyword: z.string(),
 });
 
 /**
- * Manual keyword research endpoint
+ * Keyword research endpoint
  * 
  * POST /api/keyword/research
  * 
- * Triggered when user wants to research specific seed topics
+ * Triggered when a Keyword Bank record's status is set to "Research"
  */
 router.post("/research", async (req: Request, res: Response) => {
   try {
@@ -65,7 +61,7 @@ router.post("/research", async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: `Researching ${data.seedTopics.length} seed topic(s)`,
+      message: `Researching keyword: ${data.keyword}`,
     });
   } catch (error) {
     console.error("Keyword research webhook error:", error);
@@ -123,25 +119,67 @@ router.post("/gap-scan", async (req: Request, res: Response) => {
 });
 
 /**
+ * Zod schema for auto-clustering
+ */
+const clusterSchema = z.object({
+  recordId: z.string(),
+  seedTopic: z.string(),
+});
+
+/**
+ * Auto-cluster endpoint
+ * 
+ * POST /api/keyword/cluster
+ * 
+ * Triggered when a Content Ideas record's status is set to "Auto-Cluster"
+ */
+router.post("/cluster", async (req: Request, res: Response) => {
+  try {
+    const data = clusterSchema.parse(req.body);
+
+    await inngest.send({
+      name: "keyword/cluster.auto",
+      data,
+    });
+
+    res.json({
+      success: true,
+      message: "Auto-clustering started",
+    });
+  } catch (error) {
+    console.error("Auto-cluster webhook error:", error);
+
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        error: "Invalid request data",
+        details: error.errors,
+      });
+    }
+
+    res.status(400).json({ error: String(error) });
+  }
+});
+
+/**
  * Zod schema for title generation
  */
-const generateTitlesSchema = z.object({
+const generateTitleSchema = z.object({
   recordId: z.string(),
 });
 
 /**
- * Generate titles endpoint
+ * Generate title endpoint
  * 
- * POST /api/keyword/generate-titles
+ * POST /api/keyword/generate-title
  * 
- * Triggered when a keyword idea is approved and needs title generation
+ * Triggered when a Content Ideas record's status is set to "Generate Title"
  */
-router.post("/generate-titles", async (req: Request, res: Response) => {
+router.post("/generate-title", async (req: Request, res: Response) => {
   try {
-    const data = generateTitlesSchema.parse(req.body);
+    const data = generateTitleSchema.parse(req.body);
 
     await inngest.send({
-      name: "keyword/generate-titles",
+      name: "keyword/generate-title",
       data,
     });
 
@@ -150,7 +188,7 @@ router.post("/generate-titles", async (req: Request, res: Response) => {
       message: "Title generation started",
     });
   } catch (error) {
-    console.error("Generate titles webhook error:", error);
+    console.error("Generate title webhook error:", error);
 
     if (error instanceof z.ZodError) {
       return res.status(400).json({
@@ -168,7 +206,6 @@ router.post("/generate-titles", async (req: Request, res: Response) => {
  */
 const promoteSchema = z.object({
   recordId: z.string(),
-  selectedTitleIndex: z.number().optional(),
 });
 
 /**
@@ -176,7 +213,7 @@ const promoteSchema = z.object({
  * 
  * POST /api/keyword/promote
  * 
- * Triggered when a keyword idea is promoted to the Content Pipeline
+ * Triggered when a Content Ideas record's status is set to "Approved"
  */
 router.post("/promote", async (req: Request, res: Response) => {
   try {
@@ -186,7 +223,6 @@ router.post("/promote", async (req: Request, res: Response) => {
       name: "keyword/promote",
       data: {
         recordId: data.recordId,
-        selectedTitleIndex: data.selectedTitleIndex || 0,
       },
     });
 
@@ -209,4 +245,5 @@ router.post("/promote", async (req: Request, res: Response) => {
 });
 
 export default router;
+
 

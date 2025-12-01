@@ -14,6 +14,8 @@ import { dataForSEO, type KeywordData } from "../../lib/dataforseo.js";
 import {
   createIdeaRecord,
   getAllIdeas,
+  createResearchJob,
+  updateResearchJob,
 } from "../../lib/airtable-keywords.js";
 import { calculateSEOScore } from "./keyword-research.js";
 
@@ -137,8 +139,20 @@ export const gapAnalysis = inngest.createFunction(
   { event: "keyword/gap-analysis.start" },
   async ({ event, step }) => {
     const scope = event.data.scope || "all";
+    const startTime = new Date().toISOString();
 
-    // Step 1: Load existing ideas and content to filter duplicates
+    // Step 1: Create Research Job record for gap scan
+    const jobRecordId = await step.run("create-research-job", async () => {
+      return await createResearchJob({
+        "Job ID": `gap-scan-${Date.now()}`,
+        "Seed Keywords": "Entity Graph Gap Scan",
+        Status: "Running",
+        Started: startTime,
+        Source: "Gap Scan",
+      });
+    });
+
+    // Step 2: Load existing ideas and content to filter duplicates
     const [existingIdeas, existingContent] = await step.run(
       "load-existing",
       async () => {
@@ -157,17 +171,17 @@ export const gapAnalysis = inngest.createFunction(
       }
     );
 
-    // Step 2: Generate keyword candidates from entity combinations
+    // Step 3: Generate keyword candidates from entity combinations
     const candidates = await step.run("generate-candidates", async () => {
       return generateKeywordCandidates(scope);
     });
 
-    // Step 3: Filter out already-researched keywords
+    // Step 4: Filter out already-researched keywords
     const newCandidates = candidates.filter(
       (c) => !existingIdeas.existingKeywords.has(c.keyword.toLowerCase())
     );
 
-    // Step 4: Research new candidates (batch to manage API costs)
+    // Step 5: Research new candidates (batch to manage API costs)
     const batchSize = 20;
     const results: string[] = [];
 
@@ -249,10 +263,21 @@ export const gapAnalysis = inngest.createFunction(
       }
     }
 
+    // Step 6: Update Research Job as complete
+    await step.run("update-research-job-complete", async () => {
+      await updateResearchJob(jobRecordId, {
+        Status: "Complete",
+        Completed: new Date().toISOString(),
+        "Keywords Created": results.length,
+        "Seed Keywords": `Entity Graph Gap Scan (${scope})`,
+      });
+    });
+
     return {
       status: "complete",
       candidatesFound: newCandidates.length,
       ideasCreated: results.length,
+      jobRecordId,
     };
   }
 );

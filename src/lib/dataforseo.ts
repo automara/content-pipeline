@@ -30,6 +30,7 @@ export interface KeywordData {
   serpFeatures: string[];
   relatedKeywords: string[];
   competitorUrls: string[];
+  trend?: string; // "Rising", "Stable", or "Declining"
 }
 
 /**
@@ -301,6 +302,118 @@ export class DataForSEOClient {
     // Default to informational
     return "Informational";
   }
+
+  /**
+   * Calculate trend from monthly search data
+   * 
+   * Compares recent 3 months vs previous 3 months to determine if search volume
+   * is rising, declining, or stable.
+   */
+  private calculateTrend(monthlySearches: any[]): string {
+    if (!monthlySearches || monthlySearches.length < 6) {
+      return "Stable";
+    }
+
+    // Recent 3 months average
+    const recent = monthlySearches.slice(0, 3).reduce(
+      (sum, month) => sum + (month.search_volume || 0),
+      0
+    ) / 3;
+
+    // Previous 3 months average
+    const older = monthlySearches.slice(3, 6).reduce(
+      (sum, month) => sum + (month.search_volume || 0),
+      0
+    ) / 3;
+
+    if (recent > older * 1.2) return "Rising";
+    if (recent < older * 0.8) return "Declining";
+    return "Stable";
+  }
+
+  /**
+   * Research a seed keyword and return comprehensive data for seed + related keywords
+   * 
+   * This method is used when a user sets a Keyword Bank record to "Research" status.
+   * It expands the seed into related keywords and gets full data for all of them.
+   * 
+   * @param seed - The seed keyword to research
+   * @param limit - Maximum number of related keywords to return (default: 30)
+   * @returns Array of KeywordData objects (seed + related keywords)
+   */
+  async researchSeed(seed: string, limit: number = 30): Promise<KeywordData[]> {
+    // Step 1: Get keyword ideas from seed (includes seed itself)
+    const keywords = [seed, ...(await this.getKeywordIdeas(seed, limit - 1))];
+
+    // Step 2: Get metrics and difficulty for all keywords in parallel
+    const [metrics, difficulties] = await Promise.all([
+      this.getKeywordVolume(keywords),
+      this.getKeywordDifficulty(keywords),
+    ]);
+
+    // Step 3: Get SERP data for top 5 keywords (most expensive operation)
+    // We prioritize the seed and top volume keywords
+    const serpDataMap = new Map<string, {
+      serpFeatures: string[];
+      competitorUrls: string[];
+      searchIntent: string;
+    }>();
+
+    // Sort by volume to prioritize top keywords for SERP analysis
+    const sortedKeywords = keywords
+      .map((kw) => ({
+        keyword: kw,
+        volume: metrics.get(kw)?.searchVolume || 0,
+      }))
+      .sort((a, b) => b.volume - a.volume)
+      .slice(0, 5)
+      .map((item) => item.keyword);
+
+    // Get SERP data for top keywords
+    for (const kw of sortedKeywords) {
+      try {
+        const serpData = await this.getSerpData(kw);
+        serpDataMap.set(kw, serpData);
+      } catch (error) {
+        console.error(`Failed to get SERP data for "${kw}":`, error);
+        // Use defaults if SERP fails
+        serpDataMap.set(kw, {
+          serpFeatures: [],
+          competitorUrls: [],
+          searchIntent: "Informational",
+        });
+      }
+    }
+
+    // Step 4: Combine all data into KeywordData array
+    return keywords.map((keyword) => {
+      const metric = metrics.get(keyword) || {};
+      const difficulty = difficulties.get(keyword) || 50;
+      const serp = serpDataMap.get(keyword) || {
+        serpFeatures: [],
+        competitorUrls: [],
+        searchIntent: this.inferSearchIntent({ item_types: [] }, keyword),
+      };
+
+      // Calculate trend from monthly searches if available
+      const trend = metric.monthlySearches
+        ? this.calculateTrend(metric.monthlySearches)
+        : "Stable";
+
+      return {
+        keyword,
+        searchVolume: metric.searchVolume || 0,
+        cpc: metric.cpc || 0,
+        competition: metric.competition || 0,
+        keywordDifficulty: difficulty,
+        searchIntent: serp.searchIntent,
+        serpFeatures: serp.serpFeatures,
+        relatedKeywords: [], // Not needed for seed research (we already have the keywords)
+        competitorUrls: serp.competitorUrls,
+        trend,
+      };
+    });
+  }
 }
 
 /**
@@ -313,4 +426,5 @@ export const dataForSEO = new DataForSEOClient({
   login: process.env.DATAFORSEO_LOGIN!,
   password: process.env.DATAFORSEO_PASSWORD!,
 });
+
 

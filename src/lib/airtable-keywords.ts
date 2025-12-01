@@ -1,35 +1,161 @@
 /**
- * Airtable Client for Keyword Ideation Base
+ * Airtable Client for Keyword Ideation Tables
  * 
- * This module provides functions to interact with the separate Airtable base
- * used for keyword ideation. This is separate from the Content Pipeline base.
+ * This module provides functions to interact with keyword ideation tables
+ * (Keyword Bank, Content Ideas, Research Jobs) in the main Airtable base.
  * 
- * TypeScript Note: We use a separate base connection for the keyword ideation
- * system, while the Content Pipeline uses the existing base connection.
+ * TypeScript Note: All tables are now in the same base as the Content Pipeline.
  */
 
-import Airtable from "airtable";
-import type { ContentIdeaRecord } from "../types/index.js";
-import { contentTable } from "./airtable.js"; // Use existing base for Content Pipeline
+import type {
+  ContentIdeaRecord,
+  KeywordBankRecord,
+  ResearchJobRecord,
+} from "../types/index.js";
+import {
+  base,
+  contentTable,
+  keywordBankTable,
+  contentIdeasTable,
+  researchJobsTable,
+} from "./airtable.js";
 
-// Initialize separate Airtable base for keyword ideation
-// TypeScript Note: This uses a different base ID from the Content Pipeline
-// Supports optional separate API key for the keyword base, falls back to main API key
-const keywordsBaseApiKey =
-  process.env.AIRTABLE_KEYWORDS_API_KEY || process.env.AIRTABLE_API_KEY;
+// ============================================================================
+// Keyword Bank Functions
+// ============================================================================
 
-if (!keywordsBaseApiKey) {
-  throw new Error(
-    "AIRTABLE_KEYWORDS_API_KEY or AIRTABLE_API_KEY must be set for keyword ideation system"
-  );
+/**
+ * Get a single Keyword Bank record by ID
+ */
+export async function getKeywordBankRecord(
+  recordId: string
+): Promise<KeywordBankRecord> {
+  try {
+    const record = await keywordBankTable.find(recordId);
+
+    return {
+      id: record.id,
+      fields: record.fields as KeywordBankRecord["fields"],
+    };
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+
+    if (
+      errorMsg.includes("Could not find what you are looking for") ||
+      errorMsg.includes("NOT_FOUND")
+    ) {
+      throw new Error(
+        `Keyword Bank record not found: "${recordId}". ` +
+          `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
+          `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access to this base?`
+      );
+    }
+
+    throw new Error(`Failed to get Keyword Bank record: ${errorMsg}`);
+  }
 }
 
-const keywordsBase = new Airtable({
-  apiKey: keywordsBaseApiKey,
-}).base(process.env.AIRTABLE_KEYWORDS_BASE_ID!);
+/**
+ * Create a new Keyword Bank record
+ */
+export async function createKeywordBankRecord(
+  fields: Partial<KeywordBankRecord["fields"]>
+): Promise<string> {
+  try {
+    const records = await keywordBankTable.create([{ fields }]);
+    return records[0].id;
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    throw new Error(`Failed to create Keyword Bank record: ${errorMsg}`);
+  }
+}
 
-// Table references in the keyword ideation base
-export const contentIdeasTable = keywordsBase("Content Ideas");
+/**
+ * Update a Keyword Bank record
+ */
+export async function updateKeywordBankRecord(
+  recordId: string,
+  fields: Partial<KeywordBankRecord["fields"]>
+): Promise<void> {
+  try {
+    await keywordBankTable.update(recordId, fields);
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+
+    if (
+      errorMsg.includes("Could not find what you are looking for") ||
+      errorMsg.includes("NOT_FOUND")
+    ) {
+      throw new Error(
+        `Keyword Bank record not found: "${recordId}". ` +
+          `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
+          `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access? ` +
+          `5) Is the table name "Keyword Bank" spelled exactly correctly (case-sensitive)?`
+      );
+    }
+
+    throw new Error(`Failed to update Keyword Bank record: ${errorMsg}`);
+  }
+}
+
+/**
+ * Get Keyword Bank records with a specific status
+ */
+export async function getKeywordBankByStatus(
+  status: string
+): Promise<KeywordBankRecord[]> {
+  try {
+    const records = await keywordBankTable
+      .select({
+        filterByFormula: `{Status} = "${status}"`,
+      })
+      .all();
+
+    return records.map((r) => ({
+      id: r.id,
+      fields: r.fields as KeywordBankRecord["fields"],
+    }));
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    throw new Error(
+      `Failed to get Keyword Bank by status: ${errorMsg}`
+    );
+  }
+}
+
+/**
+ * Get keywords from Keyword Bank matching a seed topic
+ * Used for auto-clustering to find unclustered keywords
+ */
+export async function getKeywordsBySeed(
+  seedTopic: string
+): Promise<KeywordBankRecord[]> {
+  try {
+    const records = await keywordBankTable
+      .select({
+        filterByFormula: `AND(
+          OR({Seed Topic} = "${seedTopic}", {Keyword} = "${seedTopic}"),
+          {Status} != "Clustered",
+          {Status} != "Rejected"
+        )`,
+      })
+      .all();
+
+    return records.map((r) => ({
+      id: r.id,
+      fields: r.fields as KeywordBankRecord["fields"],
+    }));
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    throw new Error(
+      `Failed to get keywords by seed: ${errorMsg}`
+    );
+  }
+}
+
+// ============================================================================
+// Content Ideas Functions
+// ============================================================================
 
 /**
  * Get a single Content Ideas record by ID
@@ -54,7 +180,7 @@ export async function getIdeaRecord(
       throw new Error(
         `Content Ideas record not found: "${recordId}". ` +
           `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
-          `3) Is your AIRTABLE_KEYWORDS_BASE_ID correct? 4) Does your API key have access to this base?`
+          `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access to this base?`
       );
     }
 
@@ -99,7 +225,7 @@ export async function updateIdeaRecord(
       throw new Error(
         `Content Ideas record not found: "${recordId}". ` +
           `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
-          `3) Is your AIRTABLE_KEYWORDS_BASE_ID correct? 4) Does your API key have access? ` +
+          `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access? ` +
           `5) Is the table name "Content Ideas" spelled exactly correctly (case-sensitive)?`
       );
     }
@@ -217,14 +343,10 @@ export async function createPipelineRecord(data: {
 }
 
 /**
- * Validate that entity IDs exist in Content Pipeline base
+ * Validate that entity IDs exist in the base
  * 
- * This checks if industry/persona IDs from the keyword base
- * actually exist in the Content Pipeline base before promotion.
- * 
- * Note: Since we're using separate bases, entity IDs are stored as text fields.
- * This function attempts to validate them exist in the Content Pipeline base,
- * but will not throw errors if validation fails (just logs warnings).
+ * This checks if industry/persona IDs actually exist in the base before promotion.
+ * Since all tables are in the same base now, linked records should work directly.
  */
 export async function validateEntityIds(
   industryId?: string,
@@ -232,9 +354,8 @@ export async function validateEntityIds(
 ): Promise<{ industryId?: string; personaId?: string }> {
   const validated: { industryId?: string; personaId?: string } = {};
 
-  // For now, we'll accept entity IDs as-is since they're stored as text
-  // and validated when creating the Content Pipeline record
-  // If validation fails at that point, the error will be caught there
+  // Since we're using the same base, linked records should work directly
+  // If validation fails when creating the Content Pipeline record, the error will be caught there
   if (industryId) {
     validated.industryId = industryId;
   }
@@ -244,5 +365,83 @@ export async function validateEntityIds(
   }
 
   return validated;
+}
+
+// ============================================================================
+// Research Jobs Functions
+// ============================================================================
+
+/**
+ * Get a single Research Job record by ID
+ */
+export async function getResearchJob(
+  recordId: string
+): Promise<ResearchJobRecord> {
+  try {
+    const record = await researchJobsTable.find(recordId);
+
+    return {
+      id: record.id,
+      fields: record.fields as ResearchJobRecord["fields"],
+    };
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+
+    if (
+      errorMsg.includes("Could not find what you are looking for") ||
+      errorMsg.includes("NOT_FOUND")
+    ) {
+      throw new Error(
+        `Research Job record not found: "${recordId}". ` +
+          `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
+          `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access to this base?`
+      );
+    }
+
+    throw new Error(`Failed to get Research Job record: ${errorMsg}`);
+  }
+}
+
+/**
+ * Create a new Research Job record
+ */
+export async function createResearchJob(
+  fields: Partial<ResearchJobRecord["fields"]>
+): Promise<string> {
+  try {
+    const records = await researchJobsTable.create([{ fields }]);
+    return records[0].id;
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    throw new Error(`Failed to create Research Job record: ${errorMsg}`);
+  }
+}
+
+/**
+ * Update a Research Job record
+ */
+export async function updateResearchJob(
+  recordId: string,
+  fields: Partial<ResearchJobRecord["fields"]>
+): Promise<void> {
+  try {
+    await researchJobsTable.update(recordId, fields);
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+
+    if (
+      errorMsg.includes("Could not find what you are looking for") ||
+      errorMsg.includes("NOT_FOUND")
+    ) {
+      throw new Error(
+        `Research Job record not found: "${recordId}". ` +
+          `Check: 1) Does the record exist? 2) Is the recordId correct? ` +
+          `3) Is your AIRTABLE_BASE_ID correct? 4) Does your API key have access? ` +
+          `5) Is the table name "Research Jobs" spelled exactly correctly (case-sensitive)?`
+      );
+    }
+
+    throw new Error(`Failed to update Research Job record: ${errorMsg}`);
+  }
 }
 

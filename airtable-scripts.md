@@ -1,6 +1,8 @@
 # Airtable Automation Scripts
 
-This file contains the scripts used in Airtable automations to trigger the content generation pipeline.
+This file contains the scripts used in Airtable automations for both:
+- **Content Pipeline System** - Scripts to trigger outline generation, draft generation, and finalization
+- **Keyword Ideation System** - Scripts to trigger keyword research and title generation
 
 ## Setup Instructions
 
@@ -250,3 +252,181 @@ if (!response.ok) {
 ### Missing field values
 - Ensure all required fields (Title, Content Type, etc.) are filled in the Airtable record
 - Check that linked record fields (Industry, Persona) have at least one linked record
+
+---
+
+## Part 2: Keyword Ideation System Automations
+
+These automations work with two tables:
+- **Keyword Bank**: Stores raw keyword data
+- **Content Ideas**: Stores clustered keywords ready for content creation
+
+### Setup for Keyword Automations
+
+You can reuse the same secrets from the content pipeline scripts:
+- `WEBHOOK_URL`: Your full Railway URL (e.g., `https://your-app.railway.app/api/keyword/research`)
+- `WEBHOOK_SECRET`: The same secret value you set in Railway's `WEBHOOK_SECRET` environment variable
+
+**Note:** These use status-based automations (like the content pipeline). Change status → automation fires → webhook triggered.
+
+---
+
+## Automation 4: Research Keywords (Keyword Bank)
+
+**Trigger:** When record matches conditions
+- Table: **Keyword Bank**
+- Field: Status
+- Condition: equals "Research"
+
+**Action:** Send webhook
+- Method: POST
+- URL: `https://your-app.railway.app/api/keyword/research`
+- Headers:
+  - `Content-Type: application/json`
+  - `X-Webhook-Secret: your-secret-here`
+- Body:
+```json
+{
+  "recordId": "{Record ID}",
+  "keyword": "{Keyword}"
+}
+```
+
+**What Happens:**
+1. System researches the seed keyword via DataForSEO
+2. Updates the original record with research data
+3. Creates new Keyword Bank records for related keywords
+4. Sets status to "New" when complete
+
+**Bulk Processing:**
+Select multiple Keyword Bank records → bulk change Status to "Research" → all process in parallel.
+
+---
+
+## Automation 5: Auto-Cluster Keywords (Content Ideas)
+
+**Trigger:** When record matches conditions
+- Table: **Content Ideas**
+- Field: Status
+- Condition: equals "Auto-Cluster"
+
+**Action:** Send webhook
+- Method: POST
+- URL: `https://your-app.railway.app/api/keyword/cluster`
+- Headers:
+  - `Content-Type: application/json`
+  - `X-Webhook-Secret: your-secret-here`
+- Body:
+```json
+{
+  "recordId": "{Record ID}",
+  "seedTopic": "{Seed Topic}"
+}
+```
+
+**What Happens:**
+1. System finds unclustered keywords from Keyword Bank matching the seed topic
+2. Uses Claude to select best keywords for the cluster (3-6 keywords)
+3. Links selected keywords to Content Ideas record
+4. Sets Primary Keyword, Content Type, Search Intent
+5. Updates Content Ideas status to "Review"
+
+**Required Fields:**
+- **Seed Topic**: Must match a keyword in Keyword Bank (either as Keyword or Seed Topic field)
+- **Cluster Name**: Descriptive name for the cluster
+
+---
+
+## Automation 6: Generate Title (Content Ideas)
+
+**Trigger:** When record matches conditions
+- Table: **Content Ideas**
+- Field: Status
+- Condition: equals "Generate Title"
+
+**Action:** Send webhook
+- Method: POST
+- URL: `https://your-app.railway.app/api/keyword/generate-title`
+- Headers:
+  - `Content-Type: application/json`
+  - `X-Webhook-Secret: your-secret-here`
+- Body:
+```json
+{
+  "recordId": "{Record ID}"
+}
+```
+
+**What Happens:**
+1. System generates SEO title using Claude
+2. Creates content angles and competitor analysis
+3. Updates Content Ideas record with title and angles
+4. Sets status to "Review"
+
+**Required Fields:**
+- **Keywords**: Must have at least one keyword linked from Keyword Bank
+- **Cluster Name**: Used in title generation
+- **Primary Keyword**: Used in title generation
+
+---
+
+## Automation 7: Promote to Pipeline (Content Ideas)
+
+**Trigger:** When record matches conditions
+- Table: **Content Ideas**
+- Field: Status
+- Condition: equals "Approved"
+
+**Action:** Send webhook
+- Method: POST
+- URL: `https://your-app.railway.app/api/keyword/promote`
+- Headers:
+  - `Content-Type: application/json`
+  - `X-Webhook-Secret: your-secret-here`
+- Body:
+```json
+{
+  "recordId": "{Record ID}"
+}
+```
+
+**What Happens:**
+1. System creates Content Pipeline record with all linked keywords
+2. Uses generated title or cluster name as title
+3. Includes all cluster context in Notes field
+4. Updates Content Ideas status to "Promoted"
+5. Stores Content Pipeline record ID for reference
+
+**Required Fields:**
+- **Title**: Generated title (from Generate Title step)
+- **Keywords**: Must have at least one keyword linked
+- **Content Type**: Used for Content Pipeline record
+
+**Bulk Processing:**
+Select multiple Content Ideas records → bulk change Status to "Approved" → all promote in parallel.
+
+---
+
+## Keyword Ideation Troubleshooting
+
+### Research not starting
+- Check that Keyword Bank record has Status = "Research"
+- Verify the Keyword field has a value
+- Check Railway logs for webhook errors
+
+### Auto-cluster not finding keywords
+- Verify Seed Topic matches a keyword in Keyword Bank (exact match in Keyword or Seed Topic field)
+- Check that keywords in Keyword Bank are not already "Clustered" or "Rejected"
+
+### Title generation fails
+- Ensure Content Ideas record has at least one keyword linked
+- Check that Primary Keyword field is set
+
+### Promotion fails
+- Ensure Title field is filled (run Generate Title step first)
+- Verify Keywords are linked to Content Ideas record
+
+### Status not updating
+- The webhook triggers Inngest, which then updates Airtable
+- Check Inngest dashboard to see if the function is running
+- There may be a delay of a few seconds between webhook and status update
