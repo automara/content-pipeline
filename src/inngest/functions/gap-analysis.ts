@@ -17,7 +17,20 @@ import {
   createResearchJob,
   updateResearchJob,
 } from "../../lib/airtable-keywords.js";
-import { calculateSEOScore } from "./keyword-research.js";
+
+/**
+ * Calculate SEO score for a keyword
+ * Formula: Search Volume / (Keyword Difficulty + 1)
+ * Lower scores are better (easier to rank)
+ */
+function calculateSEOScore(data: KeywordData & { keyword: string }): number {
+  const volume = data.searchVolume || 0;
+  const difficulty = data.keywordDifficulty || 50;
+  
+  // Return score where lower is better (easier to rank)
+  // If difficulty is 0, we add 1 to avoid division by zero
+  return volume / (difficulty + 1);
+}
 
 /**
  * Keyword candidate with entity context
@@ -153,7 +166,7 @@ export const gapAnalysis = inngest.createFunction(
     });
 
     // Step 2: Load existing ideas and content to filter duplicates
-    const [existingIdeas, existingContent] = await step.run(
+    const existingDataResult = await step.run(
       "load-existing",
       async () => {
         // Get all existing ideas from keyword base
@@ -161,15 +174,22 @@ export const gapAnalysis = inngest.createFunction(
 
         // Get existing keywords from Content Pipeline (would need to query that base)
         // For now, we'll just use ideas from keyword base
-        const existingKeywords = new Set(
+        const existingKeywords = new Set<string>(
           ideas
-            .map((r) => r.fields.Keyword?.toLowerCase())
+            .map((r) => r.fields["Primary Keyword"]?.toLowerCase())
             .filter(Boolean) as string[]
         );
 
-        return { existingKeywords, ideas };
+        // Return as plain object (Sets can't be serialized by Inngest)
+        return {
+          existingKeywords: Array.from(existingKeywords),
+          ideas,
+        };
       }
     );
+
+    // Reconstruct Set from array (Inngest serializes/deserializes data)
+    const existingKeywordsSet = new Set<string>(existingDataResult.existingKeywords || []);
 
     // Step 3: Generate keyword candidates from entity combinations
     const candidates = await step.run("generate-candidates", async () => {
@@ -178,7 +198,7 @@ export const gapAnalysis = inngest.createFunction(
 
     // Step 4: Filter out already-researched keywords
     const newCandidates = candidates.filter(
-      (c) => !existingIdeas.existingKeywords.has(c.keyword.toLowerCase())
+      (c) => !existingKeywordsSet.has(c.keyword.toLowerCase())
     );
 
     // Step 5: Research new candidates (batch to manage API costs)
@@ -228,20 +248,20 @@ export const gapAnalysis = inngest.createFunction(
           `create-${result.keyword}`,
           async () => {
             const fields: any = {
-              Keyword: result.keyword,
-              "Search Volume": result.searchVolume,
-              "Keyword Difficulty": result.keywordDifficulty,
-              CPC: result.cpc,
+              "Cluster Name": result.keyword, // Use keyword as cluster name for single-keyword ideas
+              "Primary Keyword": result.keyword,
+              "Total Volume": result.searchVolume,
+              "Avg Difficulty": result.keywordDifficulty,
               "Search Intent": result.searchIntent,
-              "SERP Features": result.serpFeatures,
-              "Related Keywords": JSON.stringify(result.relatedKeywords),
-              "Competitor URLs": JSON.stringify(result.competitorUrls),
-              "Content Type Suggestion": result.contentType,
+              "Content Type": result.contentType,
               "SEO Score": seoScore,
               Status: "Review",
-              Source: "Gap Scan",
               "Seed Topic": result.seedTopic,
-              "Research Date": new Date().toISOString().split("T")[0],
+              "Competitor Analysis": JSON.stringify({
+                competitorUrls: result.competitorUrls,
+                serpFeatures: result.serpFeatures,
+                relatedKeywords: result.relatedKeywords,
+              }),
             };
 
             // Add entity IDs if available
