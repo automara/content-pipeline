@@ -4,16 +4,41 @@ This file contains the scripts used in Airtable automations for both:
 - **Content Pipeline System** - Scripts to trigger outline generation, draft generation, and finalization
 - **Keyword Ideation System** - Scripts to trigger keyword research and title generation
 
+## Railway Deployment
+
+**Production URL:** `https://content-pipeline-production-e930.up.railway.app`
+
+### Available Webhook Endpoints
+
+**Content Pipeline:**
+- `POST /api/webhook/start` - Start content generation pipeline
+- `POST /api/webhook/outline-approved` - Continue after outline approval
+- `POST /api/webhook/draft-approved` - Finalize after draft approval
+
+**Keyword Ideation:**
+- `POST /api/keyword/research` - Research keywords
+- `POST /api/keyword/cluster` - Auto-cluster keywords
+- `POST /api/keyword/generate-title` - Generate SEO title
+- `POST /api/keyword/promote` - Promote to content pipeline
+
 ## Setup Instructions
 
 1. **Create Airtable Secrets:**
    - Go to your Airtable base → Extensions → Scripting
    - Click "Manage secrets" (or similar)
-   - Add these secrets:
-     - `WEBHOOK_URL`: Your full Railway URL (e.g., `https://your-app.railway.app/api/webhook/start`)
-     - `WEBHOOK_SECRET`: The same secret value you set in Railway's `WEBHOOK_SECRET` environment variable
+   - Add these secrets (each script uses its own URL secret):
+     - `WEBHOOK_URL_START`: `https://content-pipeline-production-e930.up.railway.app/api/webhook/start`
+     - `WEBHOOK_URL_OUTLINE`: `https://content-pipeline-production-e930.up.railway.app/api/webhook/outline-approved`
+     - `WEBHOOK_URL_DRAFT`: `https://content-pipeline-production-e930.up.railway.app/api/webhook/draft-approved`
+     - `WEBHOOK_URL_RESEARCH`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/research`
+     - `WEBHOOK_URL_CLUSTER`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/cluster`
+     - `WEBHOOK_URL_GENERATE_TITLE`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/generate-title`
+     - `WEBHOOK_URL_PROMOTE`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/promote`
+     - `WEBHOOK_SECRET`: The same secret value you set in Railway's `WEBHOOK_SECRET` environment variable (shared by all scripts)
 
-2. **Create Three Automations:**
+2. **Create Automations:**
+   - Content Pipeline: 3 automations (Scripts 1-3)
+   - Keyword Ideation: 4 automations (Scripts 4-7)
    - Each automation should trigger on a specific Status change
    - Each automation should run the corresponding script below
 
@@ -57,8 +82,7 @@ let personaId = inputConfig.personaId;
 let contentType = inputConfig.contentType;
 let keywords = inputConfig.keywords;
 
-// Your Railway API URL - should be: https://your-app.railway.app/api/webhook/start
-const WEBHOOK_URL = input.secret('WEBHOOK_URL');
+const WEBHOOK_URL = input.secret('WEBHOOK_URL_START');
 const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
 
 let response = await fetch(WEBHOOK_URL, {
@@ -86,7 +110,9 @@ if (!response.ok) {
 }
 ```
 
-**Note:** Make sure `WEBHOOK_URL` secret is set to the full URL including `/api/webhook/start`
+**Airtable Secrets Required:**
+- `WEBHOOK_URL_START`: `https://content-pipeline-production-e930.up.railway.app/api/webhook/start`
+- `WEBHOOK_SECRET`: (shared secret for all scripts)
 
 **Important - Required Fields:**
 The following fields **must be filled** in the Airtable record and passed to the script, or the webhook will fail with a clear error message:
@@ -135,9 +161,7 @@ let recordId = inputConfig.recordId;
 let outline = inputConfig.outline || '';
 let feedback = inputConfig.feedback || '';
 
-// Your Railway API URL - MUST be: https://your-app.railway.app/api/webhook/outline-approved
-// This is DIFFERENT from the start webhook URL!
-const WEBHOOK_URL = input.secret('WEBHOOK_URL');
+const WEBHOOK_URL = input.secret('WEBHOOK_URL_OUTLINE');
 const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
 
 let response = await fetch(WEBHOOK_URL, {
@@ -162,10 +186,13 @@ if (!response.ok) {
 }
 ```
 
+**Airtable Secrets Required:**
+- `WEBHOOK_URL_OUTLINE`: `https://content-pipeline-production-e930.up.railway.app/api/webhook/outline-approved`
+- `WEBHOOK_SECRET`: (shared secret for all scripts)
+
 **Important Notes:**
-1. **Webhook URL:** Make sure `WEBHOOK_URL` secret is set to the full URL including `/api/webhook/outline-approved` (NOT `/api/webhook/start`)
-2. **Input Variables:** Only include `recordId`, `outline`, and `feedback` - do NOT add `title` or `contentType` as input variables. The webhook handler fetches these from Airtable automatically.
-3. **Why:** The outline-approved webhook handler fetches the full record from Airtable to get `title`, `contentType`, and other fields needed for draft generation. You only need to send the minimal payload (`recordId`, `outline`, `feedback`).
+1. **Input Variables:** Only include `recordId`, `outline`, and `feedback` - do NOT add `title` or `contentType` as input variables. The webhook handler fetches these from Airtable automatically.
+2. **Why:** The outline-approved webhook handler fetches the full record from Airtable to get `title`, `contentType`, and other fields needed for draft generation. You only need to send the minimal payload (`recordId`, `outline`, `feedback`).
 
 **Important - Required Fields:**
 The webhook handler will fetch the full record from Airtable to get additional context needed for draft generation. The following fields **must be filled** in the Airtable record, or the webhook will fail with a clear error message:
@@ -204,8 +231,7 @@ let recordId = inputConfig.recordId;
 let draft = inputConfig.draft || '';
 let feedback = inputConfig.feedback || '';
 
-// Your Railway API URL - should be: https://your-app.railway.app/api/webhook/draft-approved
-const WEBHOOK_URL = input.secret('WEBHOOK_URL');
+const WEBHOOK_URL = input.secret('WEBHOOK_URL_DRAFT');
 const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
 
 let response = await fetch(WEBHOOK_URL, {
@@ -230,7 +256,9 @@ if (!response.ok) {
 }
 ```
 
-**Note:** Make sure `WEBHOOK_URL` secret is set to the full URL including `/api/webhook/draft-approved`
+**Airtable Secrets Required:**
+- `WEBHOOK_URL_DRAFT`: `https://content-pipeline-production-e930.up.railway.app/api/webhook/draft-approved`
+- `WEBHOOK_SECRET`: (shared secret for all scripts)
 
 ---
 
@@ -241,8 +269,8 @@ if (!response.ok) {
 - Verify the secret is set correctly in both places
 
 ### Script fails with "Webhook failed" error
-- Check that `WEBHOOK_URL` includes the full path (e.g., `/api/webhook/start`)
-- Verify your Railway app is running and accessible
+- Check that `WEBHOOK_URL` includes the full path (e.g., `https://content-pipeline-production-e930.up.railway.app/api/webhook/start`)
+- Verify your Railway app is running and accessible at: `https://content-pipeline-production-e930.up.railway.app`
 - Check Railway logs for more details
 
 ### Record ID not found
@@ -255,42 +283,81 @@ if (!response.ok) {
 
 ---
 
-## Part 2: Keyword Ideation System Automations
+## Part 2: Keyword Ideation System Scripts
 
-These automations work with two tables:
+These scripts work with two tables:
 - **Keyword Bank**: Stores raw keyword data
 - **Content Ideas**: Stores clustered keywords ready for content creation
 
-### Setup for Keyword Automations
+### Setup for Keyword Scripts
 
-You can reuse the same secrets from the content pipeline scripts:
-- `WEBHOOK_URL`: Your full Railway URL (e.g., `https://your-app.railway.app/api/keyword/research`)
-- `WEBHOOK_SECRET`: The same secret value you set in Railway's `WEBHOOK_SECRET` environment variable
+Each script uses its own unique URL secret (see "Airtable Secrets Required" section at the bottom of each script):
+- `WEBHOOK_URL_RESEARCH`: For Script 4
+- `WEBHOOK_URL_CLUSTER`: For Script 5
+- `WEBHOOK_URL_GENERATE_TITLE`: For Script 6
+- `WEBHOOK_URL_PROMOTE`: For Script 7
+- `WEBHOOK_SECRET`: Shared secret for all scripts
 
-**Note:** These use status-based automations (like the content pipeline). Change status → automation fires → webhook triggered.
+**Base URL:** `https://content-pipeline-production-e930.up.railway.app`
+
+**Note:** These use status-based automations (like the content pipeline). Change status → automation fires → script runs.
 
 ---
 
-## Automation 4: Research Keywords (Keyword Bank)
+## Script 4: Research Keywords (Status → "Research")
 
-**Trigger:** When record matches conditions
-- Table: **Keyword Bank**
-- Field: Status
-- Condition: equals "Research"
+**Automation Setup:**
+- **Trigger:** When record matches conditions
+  - Table: **Keyword Bank**
+  - Field: `Status`
+  - Condition: equals `"Research"`
+- **Action:** Run script
 
-**Action:** Send webhook
-- Method: POST
-- URL: `https://your-app.railway.app/api/keyword/research`
-- Headers:
-  - `Content-Type: application/json`
-  - `X-Webhook-Secret: your-secret-here`
-- Body:
-```json
-{
-  "recordId": "{Record ID}",
-  "keyword": "{Keyword}"
+**Input Variables (from Airtable record):**
+- `recordId` - The Record ID field (use `{Record ID}` in Airtable)
+- `keyword` - The Keyword field (use `{Keyword}` in Airtable)
+
+**Script:**
+```javascript
+// Trigger: When Status changes to "Research"
+// Action: Run this script
+//
+// This script sends a webhook to research keywords via DataForSEO.
+// It triggers the keyword-research function in Inngest.
+
+let inputConfig = input.config();
+
+// Get the record that triggered this automation
+let recordId = inputConfig.recordId;
+let keyword = inputConfig.keyword;
+
+const WEBHOOK_URL = input.secret('WEBHOOK_URL_RESEARCH');
+const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
+
+let response = await fetch(WEBHOOK_URL, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': WEBHOOK_SECRET
+    },
+    body: JSON.stringify({
+        recordId,
+        keyword
+    })
+});
+
+let result = await response.json();
+console.log('Webhook response:', result);
+
+// Optional: Check if the request was successful
+if (!response.ok) {
+    throw new Error(`Webhook failed: ${result.error || response.statusText}`);
 }
 ```
+
+**Airtable Secrets Required:**
+- `WEBHOOK_URL_RESEARCH`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/research`
+- `WEBHOOK_SECRET`: (shared secret for all scripts)
 
 **What Happens:**
 1. System researches the seed keyword via DataForSEO
@@ -298,31 +365,69 @@ You can reuse the same secrets from the content pipeline scripts:
 3. Creates new Keyword Bank records for related keywords
 4. Sets status to "New" when complete
 
+**Important - Required Fields:**
+The following field **must be filled** in the Airtable record and passed to the script, or the webhook will fail:
+- **Keyword** - Required. Must be a non-empty string. Use `{Keyword}` in Airtable automation input configuration.
+
 **Bulk Processing:**
 Select multiple Keyword Bank records → bulk change Status to "Research" → all process in parallel.
 
 ---
 
-## Automation 5: Auto-Cluster Keywords (Content Ideas)
+## Script 5: Auto-Cluster Keywords (Status → "Auto-Cluster")
 
-**Trigger:** When record matches conditions
-- Table: **Content Ideas**
-- Field: Status
-- Condition: equals "Auto-Cluster"
+**Automation Setup:**
+- **Trigger:** When record matches conditions
+  - Table: **Content Ideas**
+  - Field: `Status`
+  - Condition: equals `"Auto-Cluster"`
+- **Action:** Run script
 
-**Action:** Send webhook
-- Method: POST
-- URL: `https://your-app.railway.app/api/keyword/cluster`
-- Headers:
-  - `Content-Type: application/json`
-  - `X-Webhook-Secret: your-secret-here`
-- Body:
-```json
-{
-  "recordId": "{Record ID}",
-  "seedTopic": "{Seed Topic}"
+**Input Variables (from Airtable record):**
+- `recordId` - The Record ID field (use `{Record ID}` in Airtable)
+- `seedTopic` - The Seed Topic field (use `{Seed Topic}` in Airtable)
+
+**Script:**
+```javascript
+// Trigger: When Status changes to "Auto-Cluster"
+// Action: Run this script
+//
+// This script sends a webhook to auto-cluster keywords.
+// It triggers the auto-cluster function in Inngest.
+
+let inputConfig = input.config();
+
+// Get the record that triggered this automation
+let recordId = inputConfig.recordId;
+let seedTopic = inputConfig.seedTopic;
+
+const WEBHOOK_URL = input.secret('WEBHOOK_URL_CLUSTER');
+const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
+
+let response = await fetch(WEBHOOK_URL, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': WEBHOOK_SECRET
+    },
+    body: JSON.stringify({
+        recordId,
+        seedTopic
+    })
+});
+
+let result = await response.json();
+console.log('Webhook response:', result);
+
+// Optional: Check if the request was successful
+if (!response.ok) {
+    throw new Error(`Webhook failed: ${result.error || response.statusText}`);
 }
 ```
+
+**Airtable Secrets Required:**
+- `WEBHOOK_URL_CLUSTER`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/cluster`
+- `WEBHOOK_SECRET`: (shared secret for all scripts)
 
 **What Happens:**
 1. System finds unclustered keywords from Keyword Bank matching the seed topic
@@ -331,31 +436,65 @@ Select multiple Keyword Bank records → bulk change Status to "Research" → al
 4. Sets Primary Keyword, Content Type, Search Intent
 5. Updates Content Ideas status to "Review"
 
-**Required Fields:**
-- **Seed Topic**: Must match a keyword in Keyword Bank (either as Keyword or Seed Topic field)
-- **Cluster Name**: Descriptive name for the cluster
+**Important - Required Fields:**
+The following field **must be filled** in the Airtable record and passed to the script, or the webhook will fail:
+- **Seed Topic** - Required. Must match a keyword in Keyword Bank (either as Keyword or Seed Topic field). Use `{Seed Topic}` in Airtable automation input configuration.
 
 ---
 
-## Automation 6: Generate Title (Content Ideas)
+## Script 6: Generate Title (Status → "Generate Title")
 
-**Trigger:** When record matches conditions
-- Table: **Content Ideas**
-- Field: Status
-- Condition: equals "Generate Title"
+**Automation Setup:**
+- **Trigger:** When record matches conditions
+  - Table: **Content Ideas**
+  - Field: `Status`
+  - Condition: equals `"Generate Title"`
+- **Action:** Run script
 
-**Action:** Send webhook
-- Method: POST
-- URL: `https://your-app.railway.app/api/keyword/generate-title`
-- Headers:
-  - `Content-Type: application/json`
-  - `X-Webhook-Secret: your-secret-here`
-- Body:
-```json
-{
-  "recordId": "{Record ID}"
+**Input Variables (from Airtable record):**
+- `recordId` - The Record ID field (use `{Record ID}` in Airtable)
+
+**Note:** The webhook handler will fetch the full record from Airtable to get keywords, cluster name, and primary keyword automatically.
+
+**Script:**
+```javascript
+// Trigger: When Status changes to "Generate Title"
+// Action: Run this script
+//
+// This script sends a webhook to generate an SEO title.
+// It triggers the generate-titles function in Inngest.
+
+let inputConfig = input.config();
+
+// Get the record that triggered this automation
+let recordId = inputConfig.recordId;
+
+const WEBHOOK_URL = input.secret('WEBHOOK_URL_GENERATE_TITLE');
+const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
+
+let response = await fetch(WEBHOOK_URL, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': WEBHOOK_SECRET
+    },
+    body: JSON.stringify({
+        recordId
+    })
+});
+
+let result = await response.json();
+console.log('Webhook response:', result);
+
+// Optional: Check if the request was successful
+if (!response.ok) {
+    throw new Error(`Webhook failed: ${result.error || response.statusText}`);
 }
 ```
+
+**Airtable Secrets Required:**
+- `WEBHOOK_URL_GENERATE_TITLE`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/generate-title`
+- `WEBHOOK_SECRET`: (shared secret for all scripts)
 
 **What Happens:**
 1. System generates SEO title using Claude
@@ -363,32 +502,67 @@ Select multiple Keyword Bank records → bulk change Status to "Research" → al
 3. Updates Content Ideas record with title and angles
 4. Sets status to "Review"
 
-**Required Fields:**
-- **Keywords**: Must have at least one keyword linked from Keyword Bank
-- **Cluster Name**: Used in title generation
-- **Primary Keyword**: Used in title generation
+**Important - Required Fields:**
+The webhook handler will fetch the full record from Airtable to get additional context needed for title generation. The following fields **must be filled** in the Airtable record, or the webhook will fail:
+- **Keywords** - Must have at least one keyword linked from Keyword Bank
+- **Cluster Name** - Used in title generation
+- **Primary Keyword** - Used in title generation
 
 ---
 
-## Automation 7: Promote to Pipeline (Content Ideas)
+## Script 7: Promote to Pipeline (Status → "Approved")
 
-**Trigger:** When record matches conditions
-- Table: **Content Ideas**
-- Field: Status
-- Condition: equals "Approved"
+**Automation Setup:**
+- **Trigger:** When record matches conditions
+  - Table: **Content Ideas**
+  - Field: `Status`
+  - Condition: equals `"Approved"`
+- **Action:** Run script
 
-**Action:** Send webhook
-- Method: POST
-- URL: `https://your-app.railway.app/api/keyword/promote`
-- Headers:
-  - `Content-Type: application/json`
-  - `X-Webhook-Secret: your-secret-here`
-- Body:
-```json
-{
-  "recordId": "{Record ID}"
+**Input Variables (from Airtable record):**
+- `recordId` - The Record ID field (use `{Record ID}` in Airtable)
+
+**Note:** The webhook handler will fetch the full record from Airtable to get title, keywords, and content type automatically.
+
+**Script:**
+```javascript
+// Trigger: When Status changes to "Approved"
+// Action: Run this script
+//
+// This script sends a webhook to promote the content idea to the content pipeline.
+// It triggers the promote-to-pipeline function in Inngest.
+
+let inputConfig = input.config();
+
+// Get the record that triggered this automation
+let recordId = inputConfig.recordId;
+
+const WEBHOOK_URL = input.secret('WEBHOOK_URL_PROMOTE');
+const WEBHOOK_SECRET = input.secret('WEBHOOK_SECRET');
+
+let response = await fetch(WEBHOOK_URL, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': WEBHOOK_SECRET
+    },
+    body: JSON.stringify({
+        recordId
+    })
+});
+
+let result = await response.json();
+console.log('Webhook response:', result);
+
+// Optional: Check if the request was successful
+if (!response.ok) {
+    throw new Error(`Webhook failed: ${result.error || response.statusText}`);
 }
 ```
+
+**Airtable Secrets Required:**
+- `WEBHOOK_URL_PROMOTE`: `https://content-pipeline-production-e930.up.railway.app/api/keyword/promote`
+- `WEBHOOK_SECRET`: (shared secret for all scripts)
 
 **What Happens:**
 1. System creates Content Pipeline record with all linked keywords
@@ -397,10 +571,11 @@ Select multiple Keyword Bank records → bulk change Status to "Research" → al
 4. Updates Content Ideas status to "Promoted"
 5. Stores Content Pipeline record ID for reference
 
-**Required Fields:**
-- **Title**: Generated title (from Generate Title step)
-- **Keywords**: Must have at least one keyword linked
-- **Content Type**: Used for Content Pipeline record
+**Important - Required Fields:**
+The webhook handler will fetch the full record from Airtable to get additional context needed for promotion. The following fields **must be filled** in the Airtable record, or the webhook will fail:
+- **Title** - Generated title (from Generate Title step)
+- **Keywords** - Must have at least one keyword linked
+- **Content Type** - Used for Content Pipeline record
 
 **Bulk Processing:**
 Select multiple Content Ideas records → bulk change Status to "Approved" → all promote in parallel.
