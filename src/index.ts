@@ -15,13 +15,16 @@ import "dotenv/config"; // Load environment variables from .env file
 import express from "express";
 import { serve } from "inngest/express";
 import { inngest } from "./inngest/client.js";
-// Old monolithic pipeline - disabled to use separate stage functions instead
-// import { contentPipeline } from "./inngest/functions/content-pipeline.js";
 import { generateOutline } from "./inngest/functions/generate-outline.js";
 import { generateDraft } from "./inngest/functions/generate-draft.js";
 import { finalizeContent } from "./inngest/functions/finalize-content.js";
 import { batchTrigger } from "./inngest/functions/batch-trigger.js";
+import { keywordResearch } from "./inngest/functions/keyword-research.js";
+import { gapAnalysis } from "./inngest/functions/gap-analysis.js";
+import { generateTitles } from "./inngest/functions/generate-titles.js";
+import { promoteToPipeline } from "./inngest/functions/promote-to-pipeline.js";
 import webhookRouter from "./routes/webhook.js";
+import keywordRouter from "./routes/keyword.js";
 
 // Create Express app
 const app = express();
@@ -99,6 +102,9 @@ app.get("/api/diagnostics/langfuse", async (req, res) => {
 // Webhook routes - receives events from Airtable automations
 app.use("/api/webhook", webhookRouter);
 
+// Keyword webhook routes - receives events from keyword ideation Airtable automations
+app.use("/api/keyword", keywordRouter);
+
 // Inngest serve endpoint - Inngest calls this to trigger functions
 // TypeScript Note: serve() sets up the endpoint that Inngest uses to
 // communicate with our functions. We pass it our client and all functions.
@@ -107,11 +113,14 @@ app.use(
   serve({
     client: inngest,
     functions: [
-      // contentPipeline, // Disabled - using separate stage functions instead
       generateOutline,
       generateDraft,
       finalizeContent,
       batchTrigger,
+      keywordResearch,
+      gapAnalysis,
+      generateTitles,
+      promoteToPipeline,
     ],
   })
 );
@@ -130,6 +139,14 @@ app.listen(port, () => {
     "LANGFUSE_PUBLIC_KEY",
     "LANGFUSE_SECRET_KEY",
     "ANTHROPIC_API_KEY",
+  ];
+
+  // Optional environment variables for keyword ideation system
+  const optionalEnvVars = [
+    "AIRTABLE_KEYWORDS_BASE_ID",
+    "AIRTABLE_KEYWORDS_API_KEY", // Optional - falls back to AIRTABLE_API_KEY
+    "DATAFORSEO_LOGIN",
+    "DATAFORSEO_PASSWORD",
   ];
   
   const missing = requiredEnvVars.filter((key) => !process.env[key]);
@@ -153,6 +170,36 @@ app.listen(port, () => {
   
   if (baseId && !baseId.startsWith("app")) {
     console.warn("⚠️  Warning: AIRTABLE_BASE_ID should start with 'app...'");
+  }
+
+  // Check keyword ideation system configuration
+  const keywordsBaseId = process.env.AIRTABLE_KEYWORDS_BASE_ID;
+  const keywordsApiKey = process.env.AIRTABLE_KEYWORDS_API_KEY;
+  const dataForSEOLogin = process.env.DATAFORSEO_LOGIN;
+  const dataForSEOPassword = process.env.DATAFORSEO_PASSWORD;
+
+  if (keywordsBaseId || dataForSEOLogin || dataForSEOPassword) {
+    console.log("🔍 Keyword Ideation System Configuration:");
+    console.log(
+      `   Keywords Base ID: ${keywordsBaseId ? `${keywordsBaseId.substring(0, 6)}...${keywordsBaseId.substring(keywordsBaseId.length - 4)}` : "❌ NOT SET"}`
+    );
+    console.log(
+      `   Keywords API Key: ${keywordsApiKey ? `${keywordsApiKey.substring(0, 6)}...${keywordsApiKey.substring(keywordsApiKey.length - 4)}` : "Using main API key (AIRTABLE_API_KEY)"}`
+    );
+    console.log(
+      `   DataForSEO Login: ${dataForSEOLogin ? `${dataForSEOLogin.substring(0, 6)}...` : "❌ NOT SET"}`
+    );
+    console.log(
+      `   DataForSEO Password: ${dataForSEOPassword ? "***SET***" : "❌ NOT SET"}`
+    );
+
+    if (!keywordsBaseId || !dataForSEOLogin || !dataForSEOPassword) {
+      console.warn(
+        "⚠️  Warning: Keyword ideation system is partially configured. Some features may not work."
+      );
+    } else {
+      console.log("✅ Keyword ideation system configuration looks valid");
+    }
   }
   
   // Comprehensive Langfuse config check

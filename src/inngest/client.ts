@@ -70,6 +70,32 @@ type Events = {
       recordId: string;
     };
   };
+  "keyword/research.start": {
+    data: {
+      seedTopics: string[];
+      industryId?: string;
+      personaId?: string;
+      problemId?: string;
+      expandKeywords?: boolean;
+      limit?: number;
+    };
+  };
+  "keyword/gap-analysis.start": {
+    data: {
+      scope?: "all" | "industries" | "personas" | "problems";
+    };
+  };
+  "keyword/generate-titles": {
+    data: {
+      recordId: string;
+    };
+  };
+  "keyword/promote": {
+    data: {
+      recordId: string;
+      selectedTitleIndex?: number;
+    };
+  };
 };
 
 /**
