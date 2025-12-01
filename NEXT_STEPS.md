@@ -129,9 +129,57 @@ Paste the prompt template from `automara-batch-processing-guide.md` (Part 6, aro
 
 Paste the prompt template from `automara-batch-processing-guide.md` (Part 6, around line 1284)
 
-**Tip:** Create additional prompts for other content types (`outline-industry_page`, `draft-industry_page`, etc.) as needed.
+**Important:** Ensure the `{{feedback}}` variable is placed prominently at the top of the prompt (after the initial instructions) so the LLM prioritizes incorporating outline feedback.
 
-**Important:** Use `{{variableName}}` syntax for variables that will be replaced at runtime.
+### Prompt 3: `finalize-blog`
+
+**Name:** `finalize-blog`  
+**Type:** Text
+
+This prompt is used when draft feedback exists to refine the draft into final content.
+
+```
+You are refining a draft blog post based on feedback.
+
+## CRITICAL: Feedback to Incorporate
+{{feedback}}
+
+## Company Context
+{{companyProfile}}
+
+## Voice Guidelines
+{{voiceGuidelines}}
+
+## Product Overview
+{{productOverview}}
+
+## Key Differentiators
+{{differentiators}}
+
+## Target Audience
+Industry: {{industryName}}
+Persona: {{personaName}}
+
+## Current Draft
+{{draft}}
+
+## Target Keywords
+{{keywords}}
+
+## Task
+Refine the draft above based on the feedback provided. Make all requested changes while maintaining:
+- The voice and tone guidelines
+- Natural keyword integration
+- The overall structure and flow
+- Professional quality
+
+## Output
+Provide the complete refined blog post in markdown format. Include a compelling title as H1.
+```
+
+**Tip:** Create additional prompts for other content types (`outline-industry_page`, `draft-industry_page`, `finalize-industry_page`, etc.) as needed.
+
+**Important:** Use `{{variableName}}` syntax for variables that will be replaced at runtime. The feedback section should be at the top to ensure it's prioritized.
 
 ---
 

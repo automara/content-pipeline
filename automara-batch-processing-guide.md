@@ -1308,7 +1308,7 @@ Persona: {{personaName}}
 ## Approved Outline
 {{outline}}
 
-## Feedback to Incorporate
+## CRITICAL: Feedback to Incorporate
 {{feedback}}
 
 ## Target Keywords
@@ -1325,6 +1325,56 @@ Persona: {{personaName}}
 ## Output
 Write the complete blog post in markdown format. Include a compelling title as H1.
 ```
+
+**Note:** The `{{feedback}}` variable should be placed prominently (ideally near the top after initial instructions) to ensure the LLM prioritizes incorporating outline feedback when generating the draft.
+
+### Prompt: `finalize-blog`
+
+**Name:** `finalize-blog`  
+**Type:** Text
+
+This prompt is used when draft feedback exists to refine the draft into final content.
+
+```
+You are refining a draft blog post based on feedback.
+
+## CRITICAL: Feedback to Incorporate
+{{feedback}}
+
+## Company Context
+{{companyProfile}}
+
+## Voice Guidelines
+{{voiceGuidelines}}
+
+## Product Overview
+{{productOverview}}
+
+## Key Differentiators
+{{differentiators}}
+
+## Target Audience
+Industry: {{industryName}}
+Persona: {{personaName}}
+
+## Current Draft
+{{draft}}
+
+## Target Keywords
+{{keywords}}
+
+## Task
+Refine the draft above based on the feedback provided. Make all requested changes while maintaining:
+- The voice and tone guidelines
+- Natural keyword integration
+- The overall structure and flow
+- Professional quality
+
+## Output
+Provide the complete refined blog post in markdown format. Include a compelling title as H1.
+```
+
+**Note:** The feedback section is placed at the very top (after the initial instruction) to ensure the LLM prioritizes it when refining the draft.
 
 ### Prompt: `outline-industry_page`
 

@@ -46,6 +46,12 @@ type Events = {
       recordId: string;
       draft: string;
       feedback?: string;
+      // Full context needed for finalization
+      title: string;
+      contentType: string;
+      industryId?: string;
+      personaId?: string;
+      keywords?: string;
     };
   };
   "content/batch.trigger": {
